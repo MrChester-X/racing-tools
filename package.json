@@ -1,0 +1,35 @@
+{
+  "name": "@racing/monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.28.1",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "front": "pnpm --filter @racing/race-time-front",
+    "bot": "pnpm --filter @racing/telegram-bot",
+    "parser": "pnpm --filter @racing/timing-parser",
+    "remotion": "pnpm --filter @racing/remotion",
+    "shared": "pnpm --filter @racing/shared",
+    "tf": "cd infra && terraform",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "dev": "turbo run dev",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.6.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "core-js",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ],
+    "overrides": {
+      "jose": "^4.15.5"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "laps": [
+    { "count": 0, "time": 29.5, "absoluteStartTime": 0, "absoluteEndTime": 29.5, "isBestSoFar": true },
+    { "count": 1, "time": 28.1, "absoluteStartTime": 29.5, "absoluteEndTime": 57.6, "isBestSoFar": true },
+    { "count": 2, "time": 27.3, "absoluteStartTime": 57.6, "absoluteEndTime": 84.9, "isBestSoFar": true },
+    { "count": 3, "time": 28.8, "absoluteStartTime": 84.9, "absoluteEndTime": 113.7, "isBestSoFar": false },
+    { "count": 4, "time": 27.3, "absoluteStartTime": 113.7, "absoluteEndTime": 141.0, "isBestSoFar": false }
+  ],
+  "totalLaps": 5,
+  "offsetSeconds": 3,
+  "driverName": "Test Driver",
+  "driverPosition": 2,
+  "totalDrivers": 10,
+  "sourceVideoUrl": ""
+}

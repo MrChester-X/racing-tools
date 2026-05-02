@@ -1,0 +1,40 @@
+# deps (per-package and root)
+node_modules
+**/node_modules
+
+# build outputs
+dist
+**/dist
+.next
+**/.next
+out
+**/out
+.turbo
+**/.turbo
+*.tsbuildinfo
+
+# git / editor
+.git
+.idea
+.vscode
+
+# env / secrets
+.env
+.env.*
+**/.env
+**/.env.*
+key.json
+**/key.json
+
+# project-specific large dirs
+renders
+temp
+**/temp
+
+# CDK output
+infra/cdk.out
+**/cdk.out
+
+# OS
+.DS_Store
+Thumbs.db

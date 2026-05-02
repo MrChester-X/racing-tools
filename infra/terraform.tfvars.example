@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars and fill in real values.
+# terraform.tfvars is gitignored.
+
+github_owner = "PlatonH"
+github_repo  = "racing"
+
+# Override only if you want a non-default tag (CI flow):
+# bot_image_tag    = "abc123"
+# parser_image_tag = "abc123"
+
+# Override only if you want a custom bucket name:
+# renders_bucket_name = "racing-renders-prod"

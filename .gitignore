@@ -1,0 +1,44 @@
+# deps
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# build outputs
+dist/
+**/dist/
+.next/
+**/.next/
+out/
+**/out/
+.turbo/
+**/.turbo/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+key.json
+**/key.json
+
+# project-specific
+renders/
+temp/
+**/temp/
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Terraform
+infra/.terraform/
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/terraform.tfvars
+infra/*.auto.tfvars
+infra/crash.log
