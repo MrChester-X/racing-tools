@@ -40,6 +40,11 @@ output "ecr_parser_url" {
   value = aws_ecr_repository.parser.repository_url
 }
 
+output "github_actions_parser_role_arn" {
+  description = "Role ARN that GitHub Actions assumes to deploy the parser"
+  value       = aws_iam_role.github_actions_parser_deploy.arn
+}
+
 output "renders_bucket" {
   value = aws_s3_bucket.renders.bucket
 }

@@ -1,0 +1,25 @@
+version: 1
+applications:
+  - appRoot: apps/frontend
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - cd ../..
+            - corepack enable
+            - corepack prepare pnpm@10.28.1 --activate
+            - pnpm install --frozen-lockfile
+            - cd apps/frontend
+        build:
+          commands:
+            - cd ../..
+            - pnpm --filter @racing/race-time-front run build
+            - cd apps/frontend
+      artifacts:
+        baseDirectory: .next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - ../../node_modules/**/*
+          - .next/cache/**/*

@@ -1,0 +1,38 @@
+name: Deploy to Yandex Cloud
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Docker client (optional, usually preinstalled)
+        run: docker --version
+
+      - name: Decode service account key
+        run: |
+          echo "${{ secrets.YC_SERVICE_ACCOUNT_KEY_B64 }}" | base64 --decode > key.json
+
+      - name: Check that key.json is valid JSON
+        run: |
+          head -n 5 key.json
+
+      - name: DEBUG REGISTRY ID
+        run: |
+          echo "REGISTRY=<${{ secrets.YC_REGISTRY_ID }}>"
+
+      - name: Docker login to Yandex Registry
+        run: |
+          cat key.json | docker login cr.yandex -u json_key --password-stdin
+          docker build -t cr.yandex/${{ secrets.YC_REGISTRY_ID }}/next-prod:latest .
+          docker push cr.yandex/${{ secrets.YC_REGISTRY_ID }}/next-prod:latest
+
+      - name: Done
+        run: echo "✔ Push completed successfully!"

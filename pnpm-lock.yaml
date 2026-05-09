@@ -18,7 +18,7 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
-  apps/race-time-front:
+  apps/frontend:
     dependencies:
       '@supabase/supabase-js':
         specifier: ^2.103.3

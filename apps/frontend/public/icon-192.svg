@@ -1,0 +1,40 @@
+<svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background with gradient -->
+  <rect width="192" height="192" fill="url(#gradient)" rx="24"/>
+  
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#dc2626;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Racing flag -->
+  <rect x="40" y="50" width="90" height="60" fill="#1a1a1a" rx="8"/>
+  
+  <!-- Checkered pattern -->
+  <rect x="45" y="55" width="15" height="15" fill="#ffffff"/>
+  <rect x="60" y="55" width="15" height="15" fill="#1a1a1a"/>
+  <rect x="75" y="55" width="15" height="15" fill="#ffffff"/>
+  <rect x="90" y="55" width="15" height="15" fill="#1a1a1a"/>
+  <rect x="105" y="55" width="15" height="15" fill="#ffffff"/>
+  
+  <rect x="45" y="70" width="15" height="15" fill="#1a1a1a"/>
+  <rect x="60" y="70" width="15" height="15" fill="#ffffff"/>
+  <rect x="75" y="70" width="15" height="15" fill="#1a1a1a"/>
+  <rect x="90" y="70" width="15" height="15" fill="#ffffff"/>
+  <rect x="105" y="70" width="15" height="15" fill="#1a1a1a"/>
+  
+  <rect x="45" y="85" width="15" height="15" fill="#ffffff"/>
+  <rect x="60" y="85" width="15" height="15" fill="#1a1a1a"/>
+  <rect x="75" y="85" width="15" height="15" fill="#ffffff"/>
+  <rect x="90" y="85" width="15" height="15" fill="#1a1a1a"/>
+  <rect x="105" y="85" width="15" height="15" fill="#ffffff"/>
+  
+  <!-- Flag pole -->
+  <rect x="30" y="40" width="8" height="80" fill="#666666"/>
+  
+  <!-- Racing text -->
+  <text x="96" y="140" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">ACE</text>
+  <text x="96" y="160" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="14">OF PACE</text>
+</svg>

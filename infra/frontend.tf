@@ -10,7 +10,7 @@ resource "aws_amplify_app" "front" {
   platform    = "WEB_COMPUTE"
 
   environment_variables = {
-    AMPLIFY_MONOREPO_APP_ROOT = "apps/race-time-front"
+    AMPLIFY_MONOREPO_APP_ROOT = "apps/frontend"
     AMPLIFY_DIFF_DEPLOY       = "false"
     _CUSTOM_IMAGE             = "amplify:al2023"
   }
