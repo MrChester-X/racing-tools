@@ -3,6 +3,15 @@ data "aws_ssm_parameter" "github_token" {
   with_decryption = true
 }
 
+data "aws_ssm_parameter" "supabase_url" {
+  name = "/racing/supabase-url"
+}
+
+data "aws_ssm_parameter" "supabase_anon_key" {
+  name            = "/racing/supabase-anon-key"
+  with_decryption = true
+}
+
 resource "aws_amplify_app" "front" {
   name        = "racing-front"
   repository  = "https://github.com/${var.github_owner}/${var.github_repo}"
@@ -31,7 +40,9 @@ resource "aws_amplify_branch" "main" {
   enable_auto_build = true
 
   environment_variables = {
-    NEXT_PUBLIC_API_URL = "https://${var.api_subdomain}"
+    NEXT_PUBLIC_API_URL           = "https://${var.api_subdomain}"
+    NEXT_PUBLIC_SUPABASE_URL      = data.aws_ssm_parameter.supabase_url.value
+    NEXT_PUBLIC_SUPABASE_ANON_KEY = data.aws_ssm_parameter.supabase_anon_key.value
   }
 }
 
