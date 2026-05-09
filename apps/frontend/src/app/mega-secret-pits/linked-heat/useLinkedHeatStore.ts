@@ -13,6 +13,7 @@ interface LinkedHeatState {
   isLoading: boolean;
   loadingToken: number;
   channel: RealtimeChannel | null;
+  pollTimer: ReturnType<typeof setInterval> | null;
   latestByKart: Map<string, LapItem>;
   bestByKart: Map<string, number>;
   firstLapByKart: Map<string, LapItem>;
@@ -25,6 +26,8 @@ interface LinkedHeatState {
   /** internal — used by watcher */
   _load: (id: string | null) => Promise<void>;
 }
+
+const POLL_INTERVAL_MS = 10_000;
 
 function emptyMaps() {
   return {
@@ -41,6 +44,7 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
   isLoading: false,
   loadingToken: 0,
   channel: null,
+  pollTimer: null,
   ...emptyMaps(),
   error: null,
 
@@ -58,10 +62,13 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
       unsub();
       const ch = get().channel;
       if (ch) void supabase.removeChannel(ch);
+      const pt = get().pollTimer;
+      if (pt) clearInterval(pt);
       set({
         heat: null,
         notFound: false,
         channel: null,
+        pollTimer: null,
         error: null,
         ...emptyMaps(),
       });
@@ -82,12 +89,15 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
 
     const prevChannel = get().channel;
     if (prevChannel) await supabase.removeChannel(prevChannel);
+    const prevPollTimer = get().pollTimer;
+    if (prevPollTimer) clearInterval(prevPollTimer);
 
     if (!id) {
       set({
         heat: null,
         notFound: false,
         channel: null,
+        pollTimer: null,
         isLoading: false,
         error: null,
         ...emptyMaps(),
@@ -167,6 +177,40 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
         }
       });
 
+    // Periodic polling fallback — realtime can silently miss events on
+    // half-open WebSockets (NAT timeouts, mobile network switches, etc.).
+    // We re-fetch the full lap list every 10s and merge in. applyLap is
+    // idempotent, so duplicates from realtime do nothing.
+    const pollTimer = setInterval(async () => {
+      if (get().loadingToken !== token) return;
+      let fresh: LapItem[];
+      try {
+        fresh = await api.fetchAllLaps(id);
+      } catch {
+        return; // transient error — wait for next tick
+      }
+      if (get().loadingToken !== token) return;
+
+      const next = {
+        latestByKart: new Map(get().latestByKart),
+        bestByKart: new Map(get().bestByKart),
+        firstLapByKart: new Map(get().firstLapByKart),
+        lapsByKart: new Map(
+          Array.from(get().lapsByKart.entries()).map(([k, v]) => [k, v.slice()]),
+        ),
+      };
+      let added = 0;
+      for (const lap of fresh) {
+        const list = next.lapsByKart.get(lap.kart);
+        const had = list?.some((l) => l.lapCount === lap.lapCount) ?? false;
+        applyLap(lap, next.latestByKart, next.bestByKart, next.firstLapByKart, next.lapsByKart);
+        if (!had) added++;
+      }
+      if (added > 0) {
+        set(next);
+      }
+    }, POLL_INTERVAL_MS);
+
     set({
       heat,
       notFound: false,
@@ -175,6 +219,7 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
       firstLapByKart,
       lapsByKart,
       channel,
+      pollTimer,
       isLoading: false,
       error: null,
     });

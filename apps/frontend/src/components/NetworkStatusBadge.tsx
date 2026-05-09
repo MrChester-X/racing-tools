@@ -8,12 +8,18 @@ interface BadgeStyle {
   detail: string;
 }
 
-function pickStyle(browserOnline: boolean, realtimeState: RealtimeState): BadgeStyle {
-  if (!browserOnline) {
+function pickStyle(
+  browserOnline: boolean,
+  probeOk: boolean,
+  realtimeState: RealtimeState,
+): BadgeStyle {
+  if (!browserOnline || !probeOk) {
     return {
       color: '#dc2626',
       label: 'оффлайн',
-      detail: 'Устройство потеряло интернет. Realtime приостановлен.',
+      detail: !browserOnline
+        ? 'Устройство потеряло интернет. Realtime приостановлен.'
+        : 'Не достучались до сервера. Возможно соединение нестабильное или провайдер режет.',
     };
   }
   if (realtimeState === 'OPEN') {
@@ -34,9 +40,9 @@ function pickStyle(browserOnline: boolean, realtimeState: RealtimeState): BadgeS
 }
 
 export function NetworkStatusBadge() {
-  const { browserOnline, realtimeState } = useNetworkHealth();
+  const { browserOnline, probeOk, realtimeState } = useNetworkHealth();
   const [expanded, setExpanded] = useState(false);
-  const style = pickStyle(browserOnline, realtimeState);
+  const style = pickStyle(browserOnline, probeOk, realtimeState);
 
   return (
     <div
@@ -77,7 +83,7 @@ export function NetworkStatusBadge() {
           boxShadow: `0 0 6px ${style.color}`,
           flexShrink: 0,
           animation:
-            realtimeState === 'CONNECTING' || !browserOnline
+            realtimeState !== 'OPEN' || !browserOnline || !probeOk
               ? 'pulse-dot 1.2s ease-in-out infinite'
               : undefined,
         }}
