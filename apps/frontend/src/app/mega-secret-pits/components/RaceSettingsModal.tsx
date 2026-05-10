@@ -30,6 +30,11 @@ export default function RaceSettingsModal({
       ? String(currentSettings.maxLapTimeForAverageSec)
       : "",
   );
+  const [recentStatsMinutesInput, setRecentStatsMinutesInput] = useState(
+    currentSettings?.recentStatsMinutes != null
+      ? String(currentSettings.recentStatsMinutes)
+      : "",
+  );
 
   // Обработка анимации модалки
   useEffect(() => {
@@ -62,6 +67,11 @@ export default function RaceSettingsModal({
       setMaxLapTimeInput(
         currentSettings.maxLapTimeForAverageSec != null
           ? String(currentSettings.maxLapTimeForAverageSec)
+          : "",
+      );
+      setRecentStatsMinutesInput(
+        currentSettings.recentStatsMinutes != null
+          ? String(currentSettings.recentStatsMinutes)
           : "",
       );
     }
@@ -121,6 +131,7 @@ export default function RaceSettingsModal({
 
   const handleSave = () => {
     const parsedMax = parseFloat(maxLapTimeInput.replace(",", "."));
+    const parsedRecent = parseFloat(recentStatsMinutesInput.replace(",", "."));
     const settings: RaceSettings = {
       raceName: raceName.trim() || undefined,
       pitlanesCount,
@@ -128,6 +139,8 @@ export default function RaceSettingsModal({
       raceComments: raceComments.trim() || undefined,
       maxLapTimeForAverageSec:
         Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : undefined,
+      recentStatsMinutes:
+        Number.isFinite(parsedRecent) && parsedRecent > 0 ? parsedRecent : undefined,
     };
 
     onSave(settings);
@@ -256,6 +269,26 @@ export default function RaceSettingsModal({
           />
           <div className="text-xs text-gray-400 mt-1">
             Круги длительностью больше этого значения не учитываются в среднем (pit-out, заезды в бокс и т.п.). Пусто = учитывать все круги.
+          </div>
+        </div>
+
+        {/* Окно для +X на картах */}
+        <div>
+          <label className="block text-sm font-medium text-gray-200 mb-2">
+            Окно статистики +X (мин)
+            <span className="text-gray-500 font-normal"> — опционально</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={recentStatsMinutesInput}
+            onChange={(e) => setRecentStatsMinutesInput(e.target.value)}
+            placeholder="например, 30"
+            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+          />
+          <div className="text-xs text-gray-400 mt-1">
+            +X на каждом карте считается только по кругам за последние N минут (по времени отсечки). Пусто = учитывать все круги с начала гонки.
           </div>
         </div>
 

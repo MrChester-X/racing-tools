@@ -1,13 +1,33 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRaceStore } from "../store/useRaceStore";
 import { useLinkedHeatStore } from "./useLinkedHeatStore";
 import { ParsedRaceEvent, ParsedRaceTeam } from "../types";
 import { LapItem } from "@/app/heats/types";
 
+const RECENT_WINDOW_TICK_MS = 30_000; // re-evaluate "last N min" cutoff every 30s
+
+function lapPassMs(lap: LapItem): number {
+  if (lap.passAt) {
+    const t = Date.parse(lap.passAt);
+    if (Number.isFinite(t)) return t;
+  }
+  if (lap.createdAt) {
+    const t = Date.parse(lap.createdAt);
+    if (Number.isFinite(t)) return t;
+  }
+  return 0;
+}
+
+function isWithinCutoff(lap: LapItem, cutoffMs: number | null): boolean {
+  if (cutoffMs === null) return true;
+  return lapPassMs(lap) >= cutoffMs;
+}
+
 export function computeBestByPhysicalKart(
   teams: Record<string, ParsedRaceTeam>,
   events: ParsedRaceEvent[],
   lapsByKart: Map<string, LapItem[]>,
+  cutoffMs: number | null = null,
 ): Map<string, number> {
   const map = new Map<string, number>();
 
@@ -18,7 +38,10 @@ export function computeBestByPhysicalKart(
 
   // 1) Прямые попадания (sms-timing после pit'а — lap.kart = физический карт).
   for (const [kart, laps] of lapsByKart) {
-    for (const lap of laps) setBest(kart, lap.time);
+    for (const lap of laps) {
+      if (!isWithinCutoff(lap, cutoffMs)) continue;
+      setBest(kart, lap.time);
+    }
   }
 
   // 2) Стинт-маппинг (racemann — lap.kart = team rn == team.startKart).
@@ -44,14 +67,26 @@ export function computeBestByPhysicalKart(
         endLap = currentPit.lapNumber;
       }
       for (const lap of teamLaps) {
-        if (lap.lapCount >= startLap && lap.lapCount <= endLap) {
-          setBest(physicalKart, lap.time);
-        }
+        if (lap.lapCount < startLap || lap.lapCount > endLap) continue;
+        if (!isWithinCutoff(lap, cutoffMs)) continue;
+        setBest(physicalKart, lap.time);
       }
     });
   }
 
   return map;
+}
+
+function useRecentCutoffMs(): number | null {
+  const recentMin = useRaceStore((s) => s.raceData?.settings?.recentStatsMinutes);
+  const [tick, setTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!recentMin || recentMin <= 0) return;
+    const id = setInterval(() => setTick(Date.now()), RECENT_WINDOW_TICK_MS);
+    return () => clearInterval(id);
+  }, [recentMin]);
+  if (!recentMin || recentMin <= 0) return null;
+  return tick - recentMin * 60_000;
 }
 
 interface KartBestsResult {
@@ -64,12 +99,13 @@ export function useKartBests(kart: string): KartBestsResult {
   const lapsByKart = useLinkedHeatStore((s) => s.lapsByKart);
   const teams = useRaceStore((s) => s.teams);
   const events = useRaceStore((s) => s.events);
+  const cutoffMs = useRecentCutoffMs();
 
   // Кешируем целиком map по ключу (длина массивов), чтобы не пересчитывать на каждый kart-instance.
   const map = useMemo(() => {
     if (!linkedHeat || !teams || !events || lapsByKart.size === 0) return null;
-    return computeBestByPhysicalKart(teams, events, lapsByKart);
-  }, [linkedHeat, teams, events, lapsByKart]);
+    return computeBestByPhysicalKart(teams, events, lapsByKart, cutoffMs);
+  }, [linkedHeat, teams, events, lapsByKart, cutoffMs]);
 
   if (!map) return { kartBest: null, globalBest: null };
   const kartBest = map.get(kart) ?? null;
@@ -105,9 +141,9 @@ interface StintBestResult {
 export function useStintBest(teamStartKart: string, stintIndex: number): StintBestResult {
   const linkedHeat = useLinkedHeatStore((s) => s.heat);
   const lapsByKart = useLinkedHeatStore((s) => s.lapsByKart);
-  const bestByKart = useLinkedHeatStore((s) => s.bestByKart);
   const teams = useRaceStore((s) => s.teams);
   const events = useRaceStore((s) => s.events);
+  const cutoffMs = useRecentCutoffMs();
 
   const stintBest = useMemo<number | null>(() => {
     if (!linkedHeat || !teams || !events) return null;
@@ -122,17 +158,20 @@ export function useStintBest(teamStartKart: string, stintIndex: number): StintBe
     if (!range) return null;
     let best: number | null = null;
     for (const lap of teamLaps) {
-      if (lap.lapCount >= range.startLap && lap.lapCount <= range.endLap) {
-        if (best === null || lap.time < best) best = lap.time;
-      }
+      if (lap.lapCount < range.startLap || lap.lapCount > range.endLap) continue;
+      if (!isWithinCutoff(lap, cutoffMs)) continue;
+      if (best === null || lap.time < best) best = lap.time;
     }
     return best;
-  }, [linkedHeat, teams, events, lapsByKart, teamStartKart, stintIndex]);
+  }, [linkedHeat, teams, events, lapsByKart, teamStartKart, stintIndex, cutoffMs]);
 
+  // global best derived from the same physical-kart map so the cutoff applies consistently.
   const globalBest = useMemo<number | null>(() => {
-    if (bestByKart.size === 0) return null;
-    return Math.min(...bestByKart.values());
-  }, [bestByKart]);
+    if (!linkedHeat || !teams || !events || lapsByKart.size === 0) return null;
+    const map = computeBestByPhysicalKart(teams, events, lapsByKart, cutoffMs);
+    if (map.size === 0) return null;
+    return Math.min(...map.values());
+  }, [linkedHeat, teams, events, lapsByKart, cutoffMs]);
 
   return { stintBest, globalBest };
 }
