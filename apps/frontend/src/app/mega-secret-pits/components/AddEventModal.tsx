@@ -87,18 +87,19 @@ export default function AddEventModal({
   const pitlaneState = getPitlaneStateAtEvent(targetIndex);
   const availableKarts = pitlaneState ? pitlaneState[lane] || [] : [];
 
-  // Сбрасываем выбранные позиции при изменении питлейна или типа события
+  // Сбрасываем выбранные позиции при изменении питлейна или типа события.
+  // pitLapNumber сюда НЕ включаем — выбор круга относится к команде, а не к
+  // питлейну, и при переключении лейна сохраняется.
   useEffect(() => {
     setSelectedKartPosition(-1);
     setAddPosition(-1);
     setNewKartNumber("");
-    setPitLapNumber(null);
   }, [lane, eventType]);
 
-  // Сбрасываем выбранный круг при смене команды
+  // Сбрасываем выбранный круг при смене команды или типа события
   useEffect(() => {
     setPitLapNumber(null);
-  }, [teamKart]);
+  }, [teamKart, eventType]);
 
   // Находим максимальный номер карта для подсказки
   const getMaxKartNumber = () => {
