@@ -22,8 +22,9 @@ const REALTIME_POLL_MS = 1_000;
 const REALTIME_FORCE_RECONNECT_AFTER_MS = 10_000;
 
 const PROBE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-  ? `${process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, '')}/auth/v1/health`
+  ? `${process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/`
   : null;
+const PROBE_APIKEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 function readRealtimeState(): RealtimeState {
   const rt = supabase.realtime as unknown as { connectionState?: () => string };
@@ -50,9 +51,12 @@ async function probe(): Promise<boolean> {
     const res = await fetch(PROBE_URL, {
       method: 'GET',
       cache: 'no-store',
+      headers: PROBE_APIKEY ? { apikey: PROBE_APIKEY } : undefined,
       signal: ctrl.signal,
     });
-    return res.ok;
+    // Any HTTP response (including 4xx) means the server is reachable.
+    // Only network failures, timeouts, and CORS errors throw — those count as offline.
+    return res.status > 0 && res.status < 500;
   } catch {
     return false;
   } finally {
