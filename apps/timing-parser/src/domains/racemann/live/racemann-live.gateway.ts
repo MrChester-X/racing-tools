@@ -101,11 +101,12 @@ export class RacemannLiveGateway implements OnModuleInit, OnModuleDestroy {
       this.currentHeat = heat;
       this.currentRaceId = raceId;
 
-      await this.timing.insertRawMessage(this.config.kartodromId, {
-        kind: 'startData',
-        raceId,
-        data: startData,
-      });
+      // Raw message persistence temporarily disabled — too noisy.
+      // await this.timing.insertRawMessage(this.config.kartodromId, {
+      //   kind: 'startData',
+      //   raceId,
+      //   data: startData,
+      // });
 
       const seedLaps = this.parser.seed(startData);
       let inserted = 0;
@@ -153,11 +154,12 @@ export class RacemannLiveGateway implements OnModuleInit, OnModuleDestroy {
     if (this.stopped) return;
     if (!this.currentHeat || !this.currentRaceId) return;
 
-    await this.timing.insertRawMessage(this.config.kartodromId, {
-      kind: 'frame',
-      raceId: this.currentRaceId,
-      data: frame.parsed,
-    });
+    // Raw message persistence temporarily disabled — too noisy.
+    // await this.timing.insertRawMessage(this.config.kartodromId, {
+    //   kind: 'frame',
+    //   raceId: this.currentRaceId,
+    //   data: frame.parsed,
+    // });
 
     const messages = Array.isArray(frame.parsed?.M) ? frame.parsed.M : [];
     if (messages.length > 0 && !this.gotEventSinceConnect) {

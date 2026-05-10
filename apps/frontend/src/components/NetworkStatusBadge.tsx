@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNetworkHealth, type RealtimeState } from '@/lib/useNetworkHealth';
 
 interface BadgeStyle {
@@ -40,8 +40,11 @@ function pickStyle(
 }
 
 export function NetworkStatusBadge() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const { browserOnline, probeOk, realtimeState } = useNetworkHealth();
   const [expanded, setExpanded] = useState(false);
+  if (!mounted) return null;
   const style = pickStyle(browserOnline, probeOk, realtimeState);
 
   return (
