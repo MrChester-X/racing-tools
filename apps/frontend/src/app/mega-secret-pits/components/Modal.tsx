@@ -37,18 +37,19 @@ export default function Modal({ isOpen, onClose, children }: ModalProps) {
 
   // Используем Portal для рендеринга модалки в document.body
   return createPortal(
-    <div 
-      className={`fixed inset-0 bg-black flex items-center justify-center z-[9999] transition-opacity duration-300 ease-out ${
+    <div
+      className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black transition-opacity duration-300 ease-out ${
         isAnimating ? 'bg-opacity-80' : 'bg-opacity-0'
       }`}
       onClick={handleClose}
     >
-      <div 
-        className={`bg-gray-800 rounded-xl p-6 w-full max-w-2xl mx-6 shadow-2xl border border-gray-700 transition-all duration-300 ease-out ${
-          isAnimating 
-            ? 'transform scale-100 opacity-100' 
+      <div
+        className={`bg-gray-800 rounded-xl p-6 w-full max-w-2xl shadow-2xl border border-gray-700 overflow-y-auto overscroll-contain transition-all duration-300 ease-out ${
+          isAnimating
+            ? 'transform scale-100 opacity-100'
             : 'transform scale-95 opacity-0'
         }`}
+        style={{ maxHeight: 'calc(100dvh - 2rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
