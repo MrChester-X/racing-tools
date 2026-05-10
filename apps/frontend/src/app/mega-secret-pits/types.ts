@@ -39,7 +39,6 @@ export interface RaceSettings {
   startPitlane: string[][]; // Стартовые карты в питлейнах
   raceComments?: string; // Комментарии по гонке
   maxLapTimeForAverageSec?: number; // Максимальное время круга в секундах, выше которого круги не учитываются в среднем
-  recentStatsMinutes?: number; // Окно (в минутах) для расчёта +X на картах. Учитываются только круги с passAt в пределах этого окна. 0/пусто = все круги.
 }
 
 export interface RaceTimer {

@@ -3,6 +3,31 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLinkedHeatStore } from './useLinkedHeatStore';
 import { useRaceStore } from '../store/useRaceStore';
 
+// Shared 100ms tick — every Kart's <InProgressLap*> would otherwise spawn
+// its own setInterval. With 30+ karts that's 300+ setStates/sec.
+const tickListeners = new Set<(now: number) => void>();
+let tickInterval: number | null = null;
+
+function ensureTick() {
+  if (tickInterval !== null || typeof window === 'undefined') return;
+  tickInterval = window.setInterval(() => {
+    const now = Date.now();
+    for (const cb of tickListeners) cb(now);
+  }, 100);
+}
+
+function subscribeTick(cb: (now: number) => void): () => void {
+  tickListeners.add(cb);
+  ensureTick();
+  return () => {
+    tickListeners.delete(cb);
+    if (tickListeners.size === 0 && tickInterval !== null) {
+      window.clearInterval(tickInterval);
+      tickInterval = null;
+    }
+  };
+}
+
 export interface InProgressLap {
   nextLapNumber: number;
   elapsedMs: number;
@@ -31,8 +56,7 @@ export function useInProgressLap(startKart: string): InProgressLap | null {
 
   useEffect(() => {
     if (!hasBase) return;
-    const id = window.setInterval(() => setNow(Date.now()), 100);
-    return () => window.clearInterval(id);
+    return subscribeTick((t) => setNow(t));
   }, [hasBase]);
 
   const avgRecentMs = useMemo(() => {

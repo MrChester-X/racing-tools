@@ -80,6 +80,7 @@ interface RaceStore {
     lapNumber?: number,
   ) => boolean;
   deleteEvent: (eventIndex: number) => void;
+  updatePitEventLap: (eventIndex: number, lapNumber: number | null) => void;
 
   // Undo functionality
   undoLastAction: () => boolean;
@@ -416,6 +417,27 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
 
     set({ undoHistory: newUndoHistory });
     get().setRaceData(updatedRaceData);
+    get().saveRaceData();
+  },
+
+  updatePitEventLap: (eventIndex: number, lapNumber: number | null) => {
+    if (isViewerLocked()) return;
+    const { raceData, undoHistory } = get();
+    if (!raceData || eventIndex < 0 || eventIndex >= raceData.events.length) return;
+    const target = raceData.events[eventIndex];
+    if (target.type !== "pit") return;
+
+    const newUndoHistory = [structuredClone(raceData), ...undoHistory.slice(0, 2)];
+    const newEvents = raceData.events.map((ev, idx) => {
+      if (idx !== eventIndex) return ev;
+      const next = { ...ev };
+      if (lapNumber === null) delete next.lapNumber;
+      else next.lapNumber = lapNumber;
+      return next;
+    });
+
+    set({ undoHistory: newUndoHistory });
+    get().setRaceData({ ...raceData, events: newEvents });
     get().saveRaceData();
   },
 

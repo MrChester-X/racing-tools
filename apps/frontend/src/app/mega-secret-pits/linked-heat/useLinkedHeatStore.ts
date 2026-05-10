@@ -147,16 +147,17 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
           if (get().loadingToken !== token) return;
           const lap = payload.new as LapItem;
           if (!lap || typeof lap !== 'object' || !lap.kart) return;
-          const next = {
-            latestByKart: new Map(get().latestByKart),
-            bestByKart: new Map(get().bestByKart),
-            firstLapByKart: new Map(get().firstLapByKart),
-            lapsByKart: new Map(
-              Array.from(get().lapsByKart.entries()).map(([k, v]) => [k, v.slice()]),
-            ),
-          };
-          applyLap(lap, next.latestByKart, next.bestByKart, next.firstLapByKart, next.lapsByKart);
-          set(next);
+          // Only clone the affected kart's list — other karts keep their array
+          // refs so React/zustand selectors don't churn with N×M renders.
+          const prevLaps = get().lapsByKart;
+          const lapsByKart = new Map(prevLaps);
+          const existingList = prevLaps.get(lap.kart) ?? [];
+          lapsByKart.set(lap.kart, existingList.slice());
+          const latestByKart = new Map(get().latestByKart);
+          const bestByKart = new Map(get().bestByKart);
+          const firstLapByKart = new Map(get().firstLapByKart);
+          applyLap(lap, latestByKart, bestByKart, firstLapByKart, lapsByKart);
+          set({ latestByKart, bestByKart, firstLapByKart, lapsByKart });
         },
       )
       .subscribe(async (status) => {
@@ -179,36 +180,50 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
 
     // Periodic polling fallback — realtime can silently miss events on
     // half-open WebSockets (NAT timeouts, mobile network switches, etc.).
-    // We re-fetch the full lap list every 10s and merge in. applyLap is
-    // idempotent, so duplicates from realtime do nothing.
+    // We use a `createdAt` cursor so each tick only downloads NEW laps
+    // (overlap of 5s for clock skew). applyLap is idempotent, so any
+    // duplicates from realtime are no-ops.
+    let cursorIso = computeMaxCreatedAt(laps) ?? new Date(Date.now() - 60_000).toISOString();
     const pollTimer = setInterval(async () => {
       if (get().loadingToken !== token) return;
+      const sinceIso = shiftIsoBack(cursorIso, 5_000);
       let fresh: LapItem[];
       try {
-        fresh = await api.fetchAllLaps(id);
+        fresh = await api.fetchLapsSince(id, sinceIso);
       } catch {
         return; // transient error — wait for next tick
       }
-      if (get().loadingToken !== token) return;
+      if (get().loadingToken !== token || fresh.length === 0) return;
 
-      const next = {
-        latestByKart: new Map(get().latestByKart),
-        bestByKart: new Map(get().bestByKart),
-        firstLapByKart: new Map(get().firstLapByKart),
-        lapsByKart: new Map(
-          Array.from(get().lapsByKart.entries()).map(([k, v]) => [k, v.slice()]),
-        ),
-      };
       let added = 0;
+      const newLatest = new Map(get().latestByKart);
+      const newBest = new Map(get().bestByKart);
+      const newFirst = new Map(get().firstLapByKart);
+      const newLaps = new Map<string, LapItem[]>();
+      // shallow-copy only kart lists that actually receive new laps
+      const touchedKarts = new Set<string>();
       for (const lap of fresh) {
-        const list = next.lapsByKart.get(lap.kart);
+        const list = get().lapsByKart.get(lap.kart);
         const had = list?.some((l) => l.lapCount === lap.lapCount) ?? false;
-        applyLap(lap, next.latestByKart, next.bestByKart, next.firstLapByKart, next.lapsByKart);
-        if (!had) added++;
+        if (!had) {
+          touchedKarts.add(lap.kart);
+          if (!newLaps.has(lap.kart)) newLaps.set(lap.kart, (list ?? []).slice());
+          applyLap(lap, newLatest, newBest, newFirst, newLaps);
+          added++;
+        }
+        const lapCreatedAt = lap.createdAt ?? '';
+        if (lapCreatedAt > cursorIso) cursorIso = lapCreatedAt;
       }
-      if (added > 0) {
-        set(next);
-      }
+      if (added === 0) return;
+
+      const finalLapsByKart = new Map(get().lapsByKart);
+      for (const k of touchedKarts) finalLapsByKart.set(k, newLaps.get(k)!);
+      set({
+        latestByKart: newLatest,
+        bestByKart: newBest,
+        firstLapByKart: newFirst,
+        lapsByKart: finalLapsByKart,
+      });
     }, POLL_INTERVAL_MS);
 
     set({
@@ -242,6 +257,37 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
     return { added: toAdd.length, skipped: firstLaps.length - toAdd.length };
   },
 }));
+
+function computeMaxCreatedAt(laps: LapItem[]): string | null {
+  let max: string | null = null;
+  for (const l of laps) {
+    if (l.createdAt && (max === null || l.createdAt > max)) max = l.createdAt;
+  }
+  return max;
+}
+
+function shiftIsoBack(iso: string, ms: number): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return iso;
+  return new Date(t - ms).toISOString();
+}
+
+// Module-scoped memo for `min(bestByKart.values())` — every TeamRow's
+// LinkedHeatOverlay reads it; without caching the spread+Math.min is
+// re-evaluated on every store update for every consumer.
+let absoluteBestCache: { src: Map<string, number> | null; result: number | undefined } = {
+  src: null,
+  result: undefined,
+};
+
+export function selectAbsoluteBest(bestByKart: Map<string, number>): number | undefined {
+  if (absoluteBestCache.src === bestByKart) return absoluteBestCache.result;
+  let min = Infinity;
+  for (const v of bestByKart.values()) if (v < min) min = v;
+  const result = min === Infinity ? undefined : min;
+  absoluteBestCache = { src: bestByKart, result };
+  return result;
+}
 
 function applyLap(
   lap: LapItem,

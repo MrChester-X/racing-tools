@@ -4,7 +4,7 @@ import Kart from "@/app/mega-secret-pits/Kart";
 import TrashIcon from "./icons/TrashIcon";
 import DeleteTeamModal from "./DeleteTeamModal";
 import { useRaceStore } from "../store/useRaceStore";
-import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
+import { useLinkedHeatStore, selectAbsoluteBest } from "../linked-heat/useLinkedHeatStore";
 import { useInProgressLap, formatInProgressElapsed } from "../linked-heat/useInProgressLap";
 
 export type TeamSortDelta = { kind: "time"; value: number } | { kind: "lap"; value: number };
@@ -82,9 +82,7 @@ function LinkedHeatOverlay({ startKart }: OverlayProps) {
   const heat = useLinkedHeatStore((s) => s.heat);
   const latest = useLinkedHeatStore((s) => s.latestByKart.get(startKart));
   const best = useLinkedHeatStore((s) => s.bestByKart.get(startKart));
-  const absoluteBest = useLinkedHeatStore((s) =>
-    s.bestByKart.size > 0 ? Math.min(...s.bestByKart.values()) : undefined,
-  );
+  const absoluteBest = useLinkedHeatStore((s) => selectAbsoluteBest(s.bestByKart));
   const events = useRaceStore((s) => s.events);
   const teams = useRaceStore((s) => s.teams);
 

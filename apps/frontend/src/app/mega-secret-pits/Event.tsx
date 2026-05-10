@@ -3,7 +3,9 @@ import { ParsedRaceEvent } from "@/app/mega-secret-pits/types";
 import { Utils } from "@/utils/Utils";
 import KartChangeIcon from "./components/icons/KartChangeIcon";
 import TrashIcon from "./components/icons/TrashIcon";
+import EditIcon from "./components/icons/EditIcon";
 import DeleteEventModal from "./components/DeleteEventModal";
+import EditPitEventModal from "./components/EditPitEventModal";
 import PitlaneVisualization from "./components/PitlaneVisualization";
 import Kart from "./Kart";
 import { useRaceStore } from "./store/useRaceStore";
@@ -30,6 +32,7 @@ interface EventProps {
 const Event = ({ event, eventIndex, eventNumber, onKartClick }: EventProps) => {
   const { deleteEvent } = useRaceStore();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const handleDeleteConfirm = () => {
     deleteEvent(eventIndex);
@@ -45,14 +48,23 @@ const Event = ({ event, eventIndex, eventNumber, onKartClick }: EventProps) => {
             #{eventNumber} ({eventIndex})
           </div>
 
-          {/* Delete button in top-left corner */}
-          <button
-            onClick={() => setIsDeleteModalOpen(true)}
-            className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 p-1 text-orange-200 hover:text-red-300 hover:bg-red-500/20 rounded transition-all duration-200 z-10"
-            title="Удалить событие"
-          >
-            <TrashIcon className="w-3 h-3" />
-          </button>
+          {/* Action buttons in top-left corner */}
+          <div className="absolute top-2 left-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+            <button
+              onClick={() => setIsEditModalOpen(true)}
+              className="p-1 text-orange-200 hover:text-blue-300 hover:bg-blue-500/20 rounded transition-all duration-200"
+              title="Редактировать пит (изменить круг)"
+            >
+              <EditIcon className="w-3 h-3" />
+            </button>
+            <button
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="p-1 text-orange-200 hover:text-red-300 hover:bg-red-500/20 rounded transition-all duration-200"
+              title="Удалить событие"
+            >
+              <TrashIcon className="w-3 h-3" />
+            </button>
+          </div>
 
           {/* Header */}
           <div className="flex items-center justify-center mb-2">
@@ -99,6 +111,13 @@ const Event = ({ event, eventIndex, eventNumber, onKartClick }: EventProps) => {
           eventIndex={eventIndex}
           onClose={() => setIsDeleteModalOpen(false)}
           onConfirm={handleDeleteConfirm}
+        />
+
+        <EditPitEventModal
+          isOpen={isEditModalOpen}
+          event={event}
+          eventIndex={eventIndex}
+          onClose={() => setIsEditModalOpen(false)}
         />
       </>
     );

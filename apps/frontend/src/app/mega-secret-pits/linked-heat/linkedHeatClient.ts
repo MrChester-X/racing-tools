@@ -51,3 +51,29 @@ export async function fetchAllLaps(heatId: string): Promise<LapItem[]> {
   }
   return all;
 }
+
+/**
+ * Fetch only laps created after the given ISO timestamp. Used for polling
+ * fallback so we don't re-download the full history each tick.
+ */
+export async function fetchLapsSince(
+  heatId: string,
+  sinceIso: string,
+): Promise<LapItem[]> {
+  const PAGE_SIZE = 1000;
+  const all: LapItem[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('laps')
+      .select('*')
+      .eq('heatId', heatId)
+      .gt('createdAt', sinceIso)
+      .order('createdAt', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const chunk = (data ?? []) as LapItem[];
+    all.push(...chunk);
+    if (chunk.length < PAGE_SIZE) break;
+  }
+  return all;
+}
