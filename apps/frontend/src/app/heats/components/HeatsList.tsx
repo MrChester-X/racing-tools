@@ -3,19 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useHeatsStore } from '../store/useHeatsStore';
 import { ImportRaceModal } from './ImportRaceModal';
-
-const KARTODROM_LABELS: Record<string, string> = {
-  'pitstop-premium': 'PitStop Premium',
-  'pitstop-narvskaya': 'PitStop Narvskaya',
-};
-
-function kartodromLabel(id: string): string {
-  if (KARTODROM_LABELS[id]) return KARTODROM_LABELS[id];
-  return id
-    .split(/[-_]/)
-    .map((w) => (w.length ? w.charAt(0).toUpperCase() + w.slice(1) : w))
-    .join(' ');
-}
+import { kartodromLabel } from '@/lib/kartodrom';
 
 const statusConfig: Record<string, { dot: string; label: string; border: string; bg: string }> = {
   waiting: { dot: 'bg-yellow-400', label: 'Waiting', border: 'border-yellow-500/10', bg: 'bg-yellow-500/[0.03]' },
@@ -23,14 +11,6 @@ const statusConfig: Record<string, { dot: string; label: string; border: string;
   finished: { dot: 'bg-green-400', label: 'Finished', border: 'border-green-500/10', bg: 'bg-green-500/[0.03]' },
   unknown: { dot: 'bg-gray-400', label: 'Unknown', border: 'border-white/[0.06]', bg: 'bg-white/[0.02]' },
 };
-
-function formatTime(ms: number): string {
-  const totalSec = ms / 1000;
-  const min = Math.floor(totalSec / 60);
-  const sec = (totalSec % 60).toFixed(3);
-  return min > 0 ? `${min}:${sec.padStart(6, '0')}` : `${sec}`;
-}
-
 export function HeatsList() {
   const { heats, heatsTotal, heatsPage, heatsLimit, kartodromId, kartodromOptions, isLoading, loadHeats, loadKartodroms, setHeatsPage, setKartodromId, subscribe, unsubscribe } = useHeatsStore();
   const router = useRouter();
