@@ -428,21 +428,28 @@ export default function AddEventModal({
 
             {raceData.pitlanesCount > 1 && eventType !== "breakdown" && (
               <div>
-                <label htmlFor="lane" className="block text-lg font-medium text-gray-300 mb-3 text-left">
+                <label className="block text-lg font-medium text-gray-300 mb-3 text-left">
                   Питлейн
                 </label>
-                <select
-                  id="lane"
-                  value={lane}
-                  onChange={(e) => setLane(Number(e.target.value))}
-                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 text-white text-lg rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {Array.from({ length: raceData.pitlanesCount }, (_, i) => (
-                    <option key={i} value={i}>
-                      Питлейн {String.fromCharCode(65 + i)} ({i + 1})
-                    </option>
-                  ))}
-                </select>
+                <div className="bg-gray-800/40 border border-gray-600/30 rounded-lg overflow-hidden">
+                  {Array.from({ length: raceData.pitlanesCount }, (_, i) => {
+                    const isSelected = lane === i;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setLane(i)}
+                        className={`w-full text-left px-3 py-2 text-sm border-b border-gray-700/50 last:border-b-0 transition-colors ${
+                          isSelected
+                            ? "bg-blue-600/40 text-white"
+                            : "text-gray-300 hover:bg-gray-700/40"
+                        }`}
+                      >
+                        Питлейн {String.fromCharCode(65 + i)} ({i + 1})
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
