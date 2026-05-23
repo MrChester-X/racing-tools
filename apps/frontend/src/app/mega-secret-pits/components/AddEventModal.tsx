@@ -39,6 +39,35 @@ function InProgressLapButton({ startKart, selectedLapNumber, onToggle }: InProgr
   );
 }
 
+interface FutureLapButtonProps {
+  startKart: string;
+  selectedLapNumber: number | null;
+  onToggle: (lapNumber: number) => void;
+}
+
+function FutureLapButton({ startKart, selectedLapNumber, onToggle }: FutureLapButtonProps) {
+  const inProgress = useInProgressLap(startKart);
+  if (!inProgress) return null;
+  const futureLapNumber = inProgress.nextLapNumber + 1;
+  const isSelected = selectedLapNumber === futureLapNumber;
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(futureLapNumber)}
+      className={`w-full flex items-center justify-between gap-3 px-3 py-1.5 text-sm font-mono border-b border-gray-700/50 transition-colors ${
+        isSelected
+          ? "bg-purple-600/40 text-white"
+          : "text-purple-200 hover:bg-purple-900/20"
+      }`}
+      title="Пит на будущем (ещё не начавшемся) круге"
+    >
+      <span>Lap {futureLapNumber} (next)</span>
+      <span className="text-purple-400">—</span>
+      <span className="w-12 text-right">🅿️?</span>
+    </button>
+  );
+}
+
 interface AddEventModalProps {
   isOpen: boolean;
   insertIndex: number;
@@ -61,6 +90,7 @@ export default function AddEventModal({
   const [newKartNumber, setNewKartNumber] = useState("");
   const [lane, setLane] = useState(0);
   const [pitLapNumber, setPitLapNumber] = useState<number | null>(null);
+  const inProgressForTeam = useInProgressLap(teamKart);
 
   // Список кругов команды из привязанной гонки (от свежих к старым)
   const teamLaps = useMemo(() => {
@@ -96,10 +126,16 @@ export default function AddEventModal({
     setNewKartNumber("");
   }, [lane, eventType]);
 
-  // Сбрасываем выбранный круг при смене команды или типа события
+  // При смене команды или типа события подставляем текущий (in-progress)
+  // круг как выбор по умолчанию, если есть привязанная гонка. Иначе сбрасываем.
   useEffect(() => {
-    setPitLapNumber(null);
-  }, [teamKart, eventType]);
+    if (eventType === "pit" && teamKart && linkedHeat && inProgressForTeam) {
+      setPitLapNumber(inProgressForTeam.nextLapNumber);
+    } else {
+      setPitLapNumber(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamKart, eventType, linkedHeat]);
 
   // Находим максимальный номер карта для подсказки
   const getMaxKartNumber = () => {
@@ -264,6 +300,13 @@ export default function AddEventModal({
                       </div>
                     ) : (
                       <div className="bg-gray-800/40 border border-gray-600/30 rounded-lg max-h-64 overflow-y-auto">
+                        <FutureLapButton
+                          startKart={teamKart}
+                          selectedLapNumber={pitLapNumber}
+                          onToggle={(lapNumber) =>
+                            setPitLapNumber(pitLapNumber === lapNumber ? null : lapNumber)
+                          }
+                        />
                         <InProgressLapButton
                           startKart={teamKart}
                           selectedLapNumber={pitLapNumber}
