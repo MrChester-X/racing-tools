@@ -3,6 +3,7 @@ import Modal from "./Modal";
 import { useRaceStore } from "../store/useRaceStore";
 import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
 import { useInProgressLap, formatInProgressElapsed } from "../linked-heat/useInProgressLap";
+import { usePitlaneDisplayStore } from "../store/usePitlaneDisplayStore";
 
 function formatLapTime(ms: number): string {
   const totalSec = ms / 1000;
@@ -82,6 +83,7 @@ export default function AddEventModal({
   const { teams, raceData, addEvent, getPitlaneStateAtEvent } = useRaceStore();
   const linkedHeat = useLinkedHeatStore((s) => s.heat);
   const lapsByKart = useLinkedHeatStore((s) => s.lapsByKart);
+  const pitlaneOrder = usePitlaneDisplayStore((s) => s.order);
   const [eventType, setEventType] = useState<"pit" | "add_kart" | "remove_kart" | "breakdown">("pit");
   const [teamKart, setTeamKart] = useState("");
   const [kartNumber, setKartNumber] = useState("");
@@ -475,23 +477,27 @@ export default function AddEventModal({
                   Питлейн
                 </label>
                 <div className="bg-gray-800/40 border border-gray-600/30 rounded-lg overflow-hidden">
-                  {Array.from({ length: raceData.pitlanesCount }, (_, i) => {
-                    const isSelected = lane === i;
-                    return (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setLane(i)}
-                        className={`w-full text-left px-3 py-2 text-sm border-b border-gray-700/50 last:border-b-0 transition-colors ${
-                          isSelected
-                            ? "bg-blue-600/40 text-white"
-                            : "text-gray-300 hover:bg-gray-700/40"
-                        }`}
-                      >
-                        Питлейн {String.fromCharCode(65 + i)} ({i + 1})
-                      </button>
-                    );
-                  })}
+                  {(() => {
+                    const indices = Array.from({ length: raceData.pitlanesCount }, (_, i) => i);
+                    if (pitlaneOrder === "bottom-up") indices.reverse();
+                    return indices.map((i) => {
+                      const isSelected = lane === i;
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setLane(i)}
+                          className={`w-full text-left px-3 py-2 text-sm border-b border-gray-700/50 last:border-b-0 transition-colors ${
+                            isSelected
+                              ? "bg-blue-600/40 text-white"
+                              : "text-gray-300 hover:bg-gray-700/40"
+                          }`}
+                        >
+                          Питлейн {String.fromCharCode(65 + i)} ({i + 1})
+                        </button>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             )}
