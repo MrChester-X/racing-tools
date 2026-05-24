@@ -262,19 +262,18 @@ export class GrrLiveParser {
         const prevGap = kart.gap;
         kart.lastTimeRaw = raw;
         kart.initialized = true;
-        const timeMs = usToMs(raw);
-        if (timeMs > 0) {
-          const colorCode = upd.length > 3 ? stringValue(upd[3]) : '';
-          pending.push({
-            startNumber: sn,
-            rowIndex: row,
-            timeMs,
-            prevGap,
-            isInitial: isFirst,
-            isPit: colorCode === LAST_TIME_COLOR_PIT,
-            isOut: colorCode === LAST_TIME_COLOR_OUT,
-          });
-        }
+        const parsed = parseLastRoundTime(raw);
+        if (!parsed || parsed.timeMs <= 0) continue;
+        const colorCode = upd.length > 3 ? stringValue(upd[3]) : '';
+        pending.push({
+          startNumber: sn,
+          rowIndex: row,
+          timeMs: parsed.timeMs,
+          prevGap,
+          isInitial: isFirst,
+          isPit: parsed.isPit || colorCode === LAST_TIME_COLOR_PIT,
+          isOut: parsed.isOut || colorCode === LAST_TIME_COLOR_OUT,
+        });
       }
     }
 
@@ -400,6 +399,48 @@ function parseLapsMarker(text: string | null | undefined): number | null {
   if (!m) return null;
   const n = parseInt(m[1], 10);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Parse a lastRoundTime cell value. The server sends one of two shapes:
+ *   1. Pure microseconds as a numeric string (e.g. "208580000") — raw timing
+ *      data, common in r_c (change) updates.
+ *   2. A pre-formatted display string (e.g. "P 3:28.580", "3:28.580",
+ *      "1:07.425", "67.425") — sometimes appears in r_i (init) snapshots and
+ *      certain other paths. The "P "/"O " prefix marks in-lap / out-lap.
+ */
+function parseLastRoundTime(
+  raw: string,
+): { timeMs: number; isPit: boolean; isOut: boolean } | null {
+  let s = raw.trim();
+  if (!s) return null;
+
+  let isPit = false;
+  let isOut = false;
+  // Strip optional state prefix ("P 3:28.580" → "3:28.580").
+  const prefixMatch = /^([POpo])\s+(.+)$/.exec(s);
+  if (prefixMatch) {
+    const letter = prefixMatch[1].toUpperCase();
+    if (letter === 'P') isPit = true;
+    else if (letter === 'O') isOut = true;
+    s = prefixMatch[2].trim();
+  }
+
+  // Pure integer → microseconds.
+  if (/^\d+$/.test(s)) {
+    return { timeMs: usToMs(s), isPit, isOut };
+  }
+
+  // Otherwise a colon-separated time string: H:MM:SS.mmm | MM:SS.mmm | SS.mmm.
+  const parts = s.split(':');
+  let totalSec = 0;
+  for (const part of parts) {
+    const n = parseFloat(part);
+    if (!Number.isFinite(n)) return null;
+    totalSec = totalSec * 60 + n;
+  }
+  if (totalSec <= 0) return null;
+  return { timeMs: Math.round(totalSec * 1000), isPit, isOut };
 }
 
 function usToMs(raw: string): number {
