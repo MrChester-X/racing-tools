@@ -265,17 +265,16 @@ export class GrrLiveParser {
     if (pending.length === 0) return;
 
     // Pass 3: determine lap count for each pending lap using GAP semantics.
-    const leaderLap = this.findLeaderLap();
+    // `-- N laps --` in the gap column means the kart is currently driving its
+    // Nth lap, so the lap that just finished (the one whose time we received)
+    // is N - 1.
     for (const p of pending) {
       const kart = this.karts.get(p.startNumber);
       if (!kart) continue;
-      const ownLap =
-        parseLapsMarker(kart.gap) ??
-        parseLapsMarker(p.prevGap) ??
-        (leaderLap != null ? leaderLap : null);
+      const currentLap = parseLapsMarker(kart.gap) ?? parseLapsMarker(p.prevGap);
       let lapCountMode: 'race' | 'session';
-      if (ownLap != null && ownLap > 0) {
-        kart.lapCount = ownLap;
+      if (currentLap != null && currentLap > 1) {
+        kart.lapCount = currentLap - 1;
         lapCountMode = 'race';
       } else {
         kart.lapCount += 1;
@@ -312,18 +311,6 @@ export class GrrLiveParser {
       if (lower !== undefined) return lower;
     }
     return undefined;
-  }
-
-  private findLeaderLap(): number | null {
-    let leader: KartState | null = null;
-    for (const k of this.karts.values()) {
-      if (k.position === 1) {
-        leader = k;
-        break;
-      }
-    }
-    if (!leader) return null;
-    return parseLapsMarker(leader.gap);
   }
 
   private buildHeatInfo(): ParsedHeatInfo | null {
