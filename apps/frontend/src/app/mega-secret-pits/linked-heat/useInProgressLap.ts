@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLinkedHeatStore } from './useLinkedHeatStore';
 import { useRaceStore } from '../store/useRaceStore';
+import { buildLapFilterContext, computeExcludedLapCounts } from '../lapFilters';
 
 // Shared 100ms tick — every Kart's <InProgressLap*> would otherwise spawn
 // its own setInterval. With 30+ karts that's 300+ setStates/sec.
@@ -47,8 +48,8 @@ const AVG_WINDOW = 3;
 export function useInProgressLap(startKart: string): InProgressLap | null {
   const latest = useLinkedHeatStore((s) => s.latestByKart.get(startKart));
   const laps = useLinkedHeatStore((s) => s.lapsByKart.get(startKart));
-  const maxLapSec = useRaceStore((s) => s.raceData?.settings?.maxLapTimeForAverageSec);
-  const minLapSec = useRaceStore((s) => s.raceData?.settings?.minLapTimeSec);
+  const settings = useRaceStore((s) => s.raceData?.settings);
+  const events = useRaceStore((s) => s.events);
   const [now, setNow] = useState(() => Date.now());
 
   const passAtStr = latest?.passAt ?? null;
@@ -62,16 +63,21 @@ export function useInProgressLap(startKart: string): InProgressLap | null {
 
   const avgRecentMs = useMemo(() => {
     if (!laps || laps.length === 0) return null;
+    const maxLapSec = settings?.maxLapTimeForAverageSec;
     const maxMs = typeof maxLapSec === 'number' && maxLapSec > 0 ? maxLapSec * 1000 : Infinity;
-    const minMs = typeof minLapSec === 'number' && minLapSec > 0 ? minLapSec * 1000 : 0;
+    const ctx = buildLapFilterContext(settings);
+    const teamPits = (events ?? []).filter(
+      (e) => e.type === 'pit' && e.team?.startKart === startKart,
+    );
+    const excluded = computeExcludedLapCounts(laps, teamPits, ctx);
     const top = [...laps]
       .sort((a, b) => b.lapCount - a.lapCount)
-      .filter((l) => l.time <= maxMs && l.time >= minMs)
+      .filter((l) => !excluded.has(l.lapCount) && l.time <= maxMs)
       .slice(0, AVG_WINDOW);
     if (top.length === 0) return null;
     const sum = top.reduce((s, l) => s + l.time, 0);
     return sum / top.length;
-  }, [laps, maxLapSec, minLapSec]);
+  }, [laps, settings, events, startKart]);
 
   if (!latest || !hasBase) return null;
 

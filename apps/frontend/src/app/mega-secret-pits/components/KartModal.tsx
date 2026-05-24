@@ -3,8 +3,9 @@ import Modal from "./Modal";
 import CloseIcon from "./icons/CloseIcon";
 import { useRaceStore } from "../store/useRaceStore";
 import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
-import { ParsedRaceEvent } from "../types";
+import { ParsedRaceEvent, RaceSettings } from "../types";
 import { LapItem } from "@/app/heats/types";
+import { buildLapFilterContext, computeExcludedLapCounts } from "../lapFilters";
 
 function formatLapTime(ms: number): string {
   const totalSec = ms / 1000;
@@ -18,8 +19,7 @@ function computeStintStats(
   stintNumber: number,
   events: ParsedRaceEvent[],
   linkedLapsForTeam: LapItem[] | undefined,
-  maxLapTimeForAverageSec: number | undefined,
-  minLapTimeSec?: number,
+  settings: RaceSettings | undefined,
 ): StintStats {
   if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
 
@@ -45,13 +45,14 @@ function computeStintStats(
     endLap = currentPit.lapNumber;
   }
 
-  const minMs =
-    typeof minLapTimeSec === "number" && minLapTimeSec > 0 ? minLapTimeSec * 1000 : 0;
+  const ctx = buildLapFilterContext(settings);
+  const excluded = computeExcludedLapCounts(linkedLapsForTeam, teamPits, ctx);
   const laps = linkedLapsForTeam.filter(
-    (l) => l.lapCount >= startLap && l.lapCount <= endLap && l.time >= minMs,
+    (l) => l.lapCount >= startLap && l.lapCount <= endLap && !excluded.has(l.lapCount),
   );
   if (laps.length === 0) return { kind: "no-data" };
 
+  const maxLapTimeForAverageSec = settings?.maxLapTimeForAverageSec;
   const maxMs =
     typeof maxLapTimeForAverageSec === "number" && maxLapTimeForAverageSec > 0
       ? maxLapTimeForAverageSec * 1000
@@ -355,8 +356,7 @@ export default function KartModal({ isOpen, onClose, kartNumber }: KartModalProp
                           team.stintNumber,
                           events,
                           lapsByKart.get(team.startKart),
-                          raceData?.settings?.maxLapTimeForAverageSec,
-                          raceData?.settings?.minLapTimeSec,
+                          raceData?.settings,
                         )
                       : null;
                     return (

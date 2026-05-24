@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { HeatItem, LapItem } from '@/app/heats/types';
 import { useRaceStore } from '../store/useRaceStore';
 import { RaceData, RaceTeam } from '../types';
+import { buildLapFilterContext, computeExcludedLapCounts } from '../lapFilters';
 import * as api from './linkedHeatClient';
 
 interface LinkedHeatState {
@@ -303,11 +304,6 @@ export function selectAbsoluteBest(bestByKart: Map<string, number>): number | un
   return result;
 }
 
-function getMinLapMs(): number {
-  const min = useRaceStore.getState().raceData?.settings?.minLapTimeSec;
-  return typeof min === 'number' && min > 0 ? min * 1000 : 0;
-}
-
 function applyLap(
   lap: LapItem,
   latestByKart: Map<string, LapItem>,
@@ -315,13 +311,8 @@ function applyLap(
   firstLapByKart: Map<string, LapItem>,
   lapsByKart: Map<string, LapItem[]>,
 ) {
-  const minMs = getMinLapMs();
   const prev = latestByKart.get(lap.kart);
   if (!prev || lap.lapCount > prev.lapCount) latestByKart.set(lap.kart, lap);
-  if (lap.time >= minMs) {
-    const prevBest = bestByKart.get(lap.kart);
-    if (prevBest === undefined || lap.time < prevBest) bestByKart.set(lap.kart, lap.time);
-  }
   const prevFirst = firstLapByKart.get(lap.kart);
   if (!prevFirst || lap.lapCount < prevFirst.lapCount) firstLapByKart.set(lap.kart, lap);
 
@@ -333,4 +324,20 @@ function applyLap(
     list.push(lap);
   }
   lapsByKart.set(lap.kart, list);
+
+  // Recompute best for this kart from the full filtered list. Min-time,
+  // exclude-after-long and exclude-first-after-pit all need cross-lap info,
+  // so per-lap incremental update isn't enough.
+  const settings = useRaceStore.getState().raceData?.settings;
+  const ctx = buildLapFilterContext(settings);
+  const events = useRaceStore.getState().events ?? [];
+  const teamPits = events.filter((e) => e.type === 'pit' && e.team?.startKart === lap.kart);
+  const excluded = computeExcludedLapCounts(list, teamPits, ctx);
+  let best = Infinity;
+  for (const l of list) {
+    if (excluded.has(l.lapCount)) continue;
+    if (l.time < best) best = l.time;
+  }
+  if (best === Infinity) bestByKart.delete(lap.kart);
+  else bestByKart.set(lap.kart, best);
 }

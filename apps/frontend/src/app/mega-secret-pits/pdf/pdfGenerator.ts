@@ -628,7 +628,6 @@ export async function generatePdf(input: PdfExportInput, filename: string): Prom
 
   drawSectionTitle("Karts");
 
-  const minLapSec = raceData.settings?.minLapTimeSec;
   for (const kartNumber of sortedKarts) {
     const history = buildKartHistory(
       kartNumber,
@@ -636,8 +635,7 @@ export async function generatePdf(input: PdfExportInput, filename: string): Prom
       events,
       linkedLapsByKart,
       !!linkedHeat,
-      maxLapSec,
-      minLapSec,
+      raceData.settings,
     );
     const summary = getKartSummary(history);
     const isInPits = kartsInPits.has(kartNumber);

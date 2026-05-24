@@ -1,5 +1,6 @@
-import { ParsedRaceEvent, ParsedRaceTeam, RaceData } from "../types";
+import { ParsedRaceEvent, ParsedRaceTeam, RaceData, RaceSettings } from "../types";
 import { LapItem } from "@/app/heats/types";
+import { buildLapFilterContext, computeExcludedLapCounts } from "../lapFilters";
 
 export type StintStats =
   | { kind: "ok"; count: number; avg: number | null; avgCount: number; best: number; driver: string | null }
@@ -37,8 +38,7 @@ export function computeStintStats(
   stintNumber: number,
   events: ParsedRaceEvent[],
   linkedLapsForTeam: LapItem[] | undefined,
-  maxLapTimeForAverageSec: number | undefined,
-  minLapTimeSec?: number,
+  settings: RaceSettings | undefined,
 ): StintStats {
   if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
   const teamPits = events.filter((e) => e.type === "pit" && e.team?.startKart === startKart);
@@ -54,12 +54,16 @@ export function computeStintStats(
     if (typeof currentPit.lapNumber !== "number") return { kind: "missing-lap-numbers" };
     endLap = currentPit.lapNumber;
   }
-  const minMs =
-    typeof minLapTimeSec === "number" && minLapTimeSec > 0 ? minLapTimeSec * 1000 : 0;
+  const ctx = buildLapFilterContext(settings);
+  // Compute excluded set from the FULL team list — exclude-after-long and
+  // exclude-after-missing need predecessor info that might live in an earlier
+  // stint.
+  const excluded = computeExcludedLapCounts(linkedLapsForTeam, teamPits, ctx);
   const laps = linkedLapsForTeam.filter(
-    (l) => l.lapCount >= startLap && l.lapCount <= endLap && l.time >= minMs,
+    (l) => l.lapCount >= startLap && l.lapCount <= endLap && !excluded.has(l.lapCount),
   );
   if (laps.length === 0) return { kind: "no-data" };
+  const maxLapTimeForAverageSec = settings?.maxLapTimeForAverageSec;
   const maxMs =
     typeof maxLapTimeForAverageSec === "number" && maxLapTimeForAverageSec > 0
       ? maxLapTimeForAverageSec * 1000
@@ -87,8 +91,7 @@ export function buildKartHistory(
   events: ParsedRaceEvent[],
   linkedLapsByKart: Record<string, LapItem[]> | null,
   linkedHeatPresent: boolean,
-  maxLapSec: number | undefined,
-  minLapSec?: number,
+  settings: RaceSettings | undefined,
 ): KartHistoryEntry[] {
   const history: KartHistoryEntry[] = [];
   Object.values(teams).forEach((team) => {
@@ -115,7 +118,7 @@ export function buildKartHistory(
         }
       }
       const stats = linkedHeatPresent
-        ? computeStintStats(team.startKart, stintNumber, events, linkedLapsByKart?.[team.startKart], maxLapSec, minLapSec)
+        ? computeStintStats(team.startKart, stintNumber, events, linkedLapsByKart?.[team.startKart], settings)
         : null;
       history.push({ teamName: team.name, startKart: team.startKart, stintNumber, isStarting, isCurrent, stats, startTime });
     });

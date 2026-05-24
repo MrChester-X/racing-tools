@@ -3,6 +3,7 @@ import { useRaceStore } from "../store/useRaceStore";
 import { useLinkedHeatStore } from "./useLinkedHeatStore";
 import { ParsedRaceEvent, ParsedRaceTeam } from "../types";
 import { LapItem } from "@/app/heats/types";
+import { buildLapFilterContext, computeExcludedLapCounts, LapFilterContext } from "../lapFilters";
 
 /**
  * Builds a map of `physicalKart -> bestLapMs` — the fastest lap recorded
@@ -36,40 +37,65 @@ export function computeBestByPhysicalKart(
   teams: Record<string, ParsedRaceTeam>,
   events: ParsedRaceEvent[],
   lapsByKart: Map<string, LapItem[]>,
-  _isRacemann: boolean = false,
-  minLapMs: number = 0,
+  lapKartIsTeamId: boolean = false,
+  ctx: LapFilterContext = {
+    minLapMs: 0,
+    excludeAfterLongMs: undefined,
+    excludeFirstAfterPit: false,
+    excludeAfterMissingLap: false,
+  },
 ): Map<string, number> {
   const map = new Map<string, number>();
 
   const setBest = (kart: string, time: number) => {
-    if (time <= 0 || time < minLapMs) return;
+    if (time <= 0) return;
     const k = normalizeKart(kart);
     if (!k) return;
     const prev = map.get(k);
     if (prev === undefined || time < prev) map.set(k, time);
   };
 
-  // Phase 1: direct attribution by `lap.kart`. Correct for sms-timing
-  // (lap.kart = physical kart after each pit) and gives a base for racemann
-  // teams that started on this kart.
-  for (const [kart, laps] of lapsByKart) {
-    for (const lap of laps) setBest(kart, lap.time);
+  // Phase 1: direct attribution by `lap.kart`. Only valid when `lap.kart` is
+  // the PHYSICAL kart for that lap (sms-timing). When `lap.kart` is the team
+  // identifier (racemann, getraceresults), Phase 1 would attribute every team
+  // lap to the physical kart whose number happens to equal the team startKart,
+  // which contaminates that physical kart's best with stints driven on other
+  // karts. Skip Phase 1 in that case — Phase 2 handles the attribution.
+  if (!lapKartIsTeamId) {
+    for (const [kart, laps] of lapsByKart) {
+      // sms-timing: lap.kart is the physical kart; team pit history would be
+      // misleading here. Filter only by single-lap rules (min) — multi-lap
+      // rules (after-long, after-pit, after-missing) need team context.
+      const minOnlyCtx: LapFilterContext = {
+        minLapMs: ctx.minLapMs,
+        excludeAfterLongMs: undefined,
+        excludeFirstAfterPit: false,
+        excludeAfterMissingLap: false,
+      };
+      const excluded = computeExcludedLapCounts(laps, [], minOnlyCtx);
+      for (const lap of laps) {
+        if (excluded.has(lap.lapCount)) continue;
+        setBest(kart, lap.time);
+      }
+    }
   }
 
-  // Phase 2: stint-range mapping. Required for racemann (lap.kart = team rn,
-  // never changes; only pit-event lapNumbers can split stints across the
-  // team's physical karts). Harmless for sms-timing — same laps re-applied,
-  // setBest is a no-op when value isn't smaller.
+  // Phase 2: stint-range mapping. Required for racemann/getraceresults
+  // (lap.kart = team id, never changes; only pit-event lapNumbers can split
+  // stints across the team's physical karts). Harmless for sms-timing — same
+  // laps re-applied, setBest is a no-op when value isn't smaller.
   for (const team of Object.values(teams)) {
     const teamLaps = lapsByKart.get(team.startKart);
     if (!teamLaps || teamLaps.length === 0) continue;
     const teamPits = events.filter(
       (e) => e.type === "pit" && e.team?.startKart === team.startKart,
     );
+    const excluded = computeExcludedLapCounts(teamLaps, teamPits, ctx);
     team.karts.forEach((physicalKart, stintIndex) => {
       const range = computeStintLapRange(teamPits, stintIndex);
       if (!range) return;
       for (const lap of teamLaps) {
+        if (excluded.has(lap.lapCount)) continue;
         if (lap.lapCount >= range.startLap && lap.lapCount <= range.endLap) {
           setBest(physicalKart, lap.time);
         }
@@ -80,8 +106,15 @@ export function computeBestByPhysicalKart(
   return map;
 }
 
-function isRacemannHeat(kartodromId: string | undefined | null): boolean {
-  return typeof kartodromId === "string" && kartodromId.startsWith("racemann-");
+// Timing systems where `lap.kart` is the TEAM identifier (constant across the
+// race), not the physical kart number. For these, the physical kart driven in
+// each stint must be derived from the team's pit history, not from `lap.kart`.
+const TEAM_ID_KARTODROM_IDS = new Set<string>(["igora-karting"]);
+
+function lapKartIsTeamIdHeat(kartodromId: string | undefined | null): boolean {
+  if (typeof kartodromId !== "string") return false;
+  if (kartodromId.startsWith("racemann-")) return true;
+  return TEAM_ID_KARTODROM_IDS.has(kartodromId);
 }
 
 // Module-level memoization: every <Kart /> instance calls useKartBests, and
@@ -92,43 +125,48 @@ let bestMapCache: {
   teams: Record<string, ParsedRaceTeam> | null;
   events: ParsedRaceEvent[] | null;
   lapsByKart: Map<string, LapItem[]> | null;
-  isRacemann: boolean | null;
-  minLapMs: number | null;
+  lapKartIsTeamId: boolean | null;
+  ctxKey: string | null;
   globalBest: number | null;
   result: Map<string, number> | null;
 } = {
   teams: null,
   events: null,
   lapsByKart: null,
-  isRacemann: null,
-  minLapMs: null,
+  lapKartIsTeamId: null,
+  ctxKey: null,
   globalBest: null,
   result: null,
 };
+
+function ctxCacheKey(ctx: LapFilterContext): string {
+  return `${ctx.minLapMs}|${ctx.excludeAfterLongMs ?? ""}|${ctx.excludeFirstAfterPit ? 1 : 0}|${ctx.excludeAfterMissingLap ? 1 : 0}`;
+}
 
 function getCachedBestByPhysicalKart(
   teams: Record<string, ParsedRaceTeam>,
   events: ParsedRaceEvent[],
   lapsByKart: Map<string, LapItem[]>,
-  isRacemann: boolean,
-  minLapMs: number,
+  lapKartIsTeamId: boolean,
+  ctx: LapFilterContext,
 ): { map: Map<string, number>; globalBest: number | null } {
+  const ctxKey = ctxCacheKey(ctx);
   if (
     bestMapCache.teams === teams &&
     bestMapCache.events === events &&
     bestMapCache.lapsByKart === lapsByKart &&
-    bestMapCache.isRacemann === isRacemann &&
-    bestMapCache.minLapMs === minLapMs &&
+    bestMapCache.lapKartIsTeamId === lapKartIsTeamId &&
+    bestMapCache.ctxKey === ctxKey &&
     bestMapCache.result !== null
   ) {
     return { map: bestMapCache.result, globalBest: bestMapCache.globalBest };
   }
-  const result = computeBestByPhysicalKart(teams, events, lapsByKart, isRacemann, minLapMs);
+  const result = computeBestByPhysicalKart(teams, events, lapsByKart, lapKartIsTeamId, ctx);
   let globalBest: number | null = null;
   for (const v of result.values()) {
     if (globalBest === null || v < globalBest) globalBest = v;
   }
-  bestMapCache = { teams, events, lapsByKart, isRacemann, minLapMs, result, globalBest };
+  bestMapCache = { teams, events, lapsByKart, lapKartIsTeamId, ctxKey, result, globalBest };
   return { map: result, globalBest };
 }
 
@@ -142,16 +180,16 @@ export function useKartBests(kart: string): KartBestsResult {
   const lapsByKart = useLinkedHeatStore((s) => s.lapsByKart);
   const teams = useRaceStore((s) => s.teams);
   const events = useRaceStore((s) => s.events);
-  const minLapSec = useRaceStore((s) => s.raceData?.settings?.minLapTimeSec);
-  const minLapMs = typeof minLapSec === "number" && minLapSec > 0 ? minLapSec * 1000 : 0;
+  const settings = useRaceStore((s) => s.raceData?.settings);
+  const ctx = useMemo(() => buildLapFilterContext(settings), [settings]);
 
   const { map, globalBest } = useMemo(() => {
     if (!linkedHeat || !teams || !events || lapsByKart.size === 0) {
       return { map: null as Map<string, number> | null, globalBest: null as number | null };
     }
-    const isRacemann = isRacemannHeat(linkedHeat.kartodromId);
-    return getCachedBestByPhysicalKart(teams, events, lapsByKart, isRacemann, minLapMs);
-  }, [linkedHeat, teams, events, lapsByKart, minLapMs]);
+    const lapKartIsTeamId = lapKartIsTeamIdHeat(linkedHeat.kartodromId);
+    return getCachedBestByPhysicalKart(teams, events, lapsByKart, lapKartIsTeamId, ctx);
+  }, [linkedHeat, teams, events, lapsByKart, ctx]);
 
   if (!map) return { kartBest: null, globalBest: null };
   return { kartBest: map.get(normalizeKart(kart)) ?? null, globalBest };
@@ -187,8 +225,8 @@ export function useStintBest(teamStartKart: string, stintIndex: number): StintBe
   const lapsByKart = useLinkedHeatStore((s) => s.lapsByKart);
   const teams = useRaceStore((s) => s.teams);
   const events = useRaceStore((s) => s.events);
-  const minLapSec = useRaceStore((s) => s.raceData?.settings?.minLapTimeSec);
-  const minLapMs = typeof minLapSec === "number" && minLapSec > 0 ? minLapSec * 1000 : 0;
+  const settings = useRaceStore((s) => s.raceData?.settings);
+  const ctx = useMemo(() => buildLapFilterContext(settings), [settings]);
 
   const stintBest = useMemo<number | null>(() => {
     if (!linkedHeat || !teams || !events) return null;
@@ -201,22 +239,23 @@ export function useStintBest(teamStartKart: string, stintIndex: number): StintBe
     );
     const range = computeStintLapRange(teamPits, stintIndex);
     if (!range) return null;
+    const excluded = computeExcludedLapCounts(teamLaps, teamPits, ctx);
     let best: number | null = null;
     for (const lap of teamLaps) {
-      if (lap.time < minLapMs) continue;
+      if (excluded.has(lap.lapCount)) continue;
       if (lap.lapCount >= range.startLap && lap.lapCount <= range.endLap) {
         if (best === null || lap.time < best) best = lap.time;
       }
     }
     return best;
-  }, [linkedHeat, teams, events, lapsByKart, teamStartKart, stintIndex, minLapMs]);
+  }, [linkedHeat, teams, events, lapsByKart, teamStartKart, stintIndex, ctx]);
 
   // globalBest re-uses the cached physical-kart map (same one as useKartBests).
   const globalBest = useMemo<number | null>(() => {
     if (!linkedHeat || !teams || !events || lapsByKart.size === 0) return null;
-    const isRacemann = isRacemannHeat(linkedHeat.kartodromId);
-    return getCachedBestByPhysicalKart(teams, events, lapsByKart, isRacemann, minLapMs).globalBest;
-  }, [linkedHeat, teams, events, lapsByKart, minLapMs]);
+    const lapKartIsTeamId = lapKartIsTeamIdHeat(linkedHeat.kartodromId);
+    return getCachedBestByPhysicalKart(teams, events, lapsByKart, lapKartIsTeamId, ctx).globalBest;
+  }, [linkedHeat, teams, events, lapsByKart, ctx]);
 
   return { stintBest, globalBest };
 }

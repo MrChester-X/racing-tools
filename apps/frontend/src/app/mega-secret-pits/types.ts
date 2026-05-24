@@ -40,6 +40,9 @@ export interface RaceSettings {
   raceComments?: string; // Комментарии по гонке
   maxLapTimeForAverageSec?: number; // Максимальное время круга в секундах, выше которого круги не учитываются в среднем
   minLapTimeSec?: number; // Минимальное время круга в секундах; круги меньше не учитываются ни в одной статистике (best/avg/...)
+  excludeLapAfterLong?: boolean; // Если включено: круг N+1 не учитывается ни в одной статистике, если круг N был дольше maxLapTimeForAverageSec
+  excludeFirstLapAfterPit?: boolean; // Если включено: первый круг после пит-ивента (pit.lapNumber + 1) не учитывается ни в одной статистике
+  excludeAfterMissingLap?: boolean; // Если включено: если предыдущий круг отсутствует (нет в данных), текущий не учитывается
 }
 
 export interface RaceTimer {

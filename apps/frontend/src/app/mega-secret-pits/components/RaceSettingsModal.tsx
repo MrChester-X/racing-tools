@@ -35,6 +35,15 @@ export default function RaceSettingsModal({
       ? String(currentSettings.minLapTimeSec)
       : "",
   );
+  const [excludeLapAfterLong, setExcludeLapAfterLong] = useState(
+    !!currentSettings?.excludeLapAfterLong,
+  );
+  const [excludeFirstLapAfterPit, setExcludeFirstLapAfterPit] = useState(
+    !!currentSettings?.excludeFirstLapAfterPit,
+  );
+  const [excludeAfterMissingLap, setExcludeAfterMissingLap] = useState(
+    !!currentSettings?.excludeAfterMissingLap,
+  );
 
   // Обработка анимации модалки
   useEffect(() => {
@@ -74,6 +83,9 @@ export default function RaceSettingsModal({
           ? String(currentSettings.minLapTimeSec)
           : "",
       );
+      setExcludeLapAfterLong(!!currentSettings.excludeLapAfterLong);
+      setExcludeFirstLapAfterPit(!!currentSettings.excludeFirstLapAfterPit);
+      setExcludeAfterMissingLap(!!currentSettings.excludeAfterMissingLap);
     }
   }, [currentSettings]);
 
@@ -141,6 +153,9 @@ export default function RaceSettingsModal({
         Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : undefined,
       minLapTimeSec:
         Number.isFinite(parsedMin) && parsedMin > 0 ? parsedMin : undefined,
+      excludeLapAfterLong: excludeLapAfterLong || undefined,
+      excludeFirstLapAfterPit: excludeFirstLapAfterPit || undefined,
+      excludeAfterMissingLap: excludeAfterMissingLap || undefined,
     };
 
     onSave(settings);
@@ -290,6 +305,63 @@ export default function RaceSettingsModal({
           <div className="text-xs text-gray-400 mt-1">
             Круги короче этого значения не учитываются нигде: ни в бесте, ни в среднем, ни в статистике стинтов. Пусто = учитывать все круги.
           </div>
+        </div>
+
+        {/* Чекбокс: исключать круг после долгого */}
+        <div className="flex items-start gap-3">
+          <input
+            id="excludeLapAfterLong"
+            type="checkbox"
+            checked={excludeLapAfterLong}
+            onChange={(e) => setExcludeLapAfterLong(e.target.checked)}
+            className="mt-1 w-4 h-4 accent-orange-500 cursor-pointer"
+          />
+          <label htmlFor="excludeLapAfterLong" className="flex-1 cursor-pointer">
+            <div className="text-sm font-medium text-gray-200">
+              Исключать круг после слишком долгого
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              Если предыдущий круг был дольше «макс. времени круга для среднего», следующий не учитывается нигде (ни в бесте, ни в среднем).
+            </div>
+          </label>
+        </div>
+
+        {/* Чекбокс: исключать первый круг после питов */}
+        <div className="flex items-start gap-3">
+          <input
+            id="excludeFirstLapAfterPit"
+            type="checkbox"
+            checked={excludeFirstLapAfterPit}
+            onChange={(e) => setExcludeFirstLapAfterPit(e.target.checked)}
+            className="mt-1 w-4 h-4 accent-orange-500 cursor-pointer"
+          />
+          <label htmlFor="excludeFirstLapAfterPit" className="flex-1 cursor-pointer">
+            <div className="text-sm font-medium text-gray-200">
+              Исключать первый круг после пита
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              Out-lap (pit.lapNumber + 1) не учитывается ни в бесте, ни в среднем, ни в статистике стинтов.
+            </div>
+          </label>
+        </div>
+
+        {/* Чекбокс: исключать круг, если предыдущий пустой */}
+        <div className="flex items-start gap-3">
+          <input
+            id="excludeAfterMissingLap"
+            type="checkbox"
+            checked={excludeAfterMissingLap}
+            onChange={(e) => setExcludeAfterMissingLap(e.target.checked)}
+            className="mt-1 w-4 h-4 accent-orange-500 cursor-pointer"
+          />
+          <label htmlFor="excludeAfterMissingLap" className="flex-1 cursor-pointer">
+            <div className="text-sm font-medium text-gray-200">
+              Исключать круг, если предыдущий пропал
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              Если предыдущего круга (lapCount − 1) нет в данных — текущий не учитывается. Также исключает самый первый круг карта.
+            </div>
+          </label>
         </div>
 
           </div>

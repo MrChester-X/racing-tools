@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import { ParsedRaceEvent, ParsedRaceTeam, RaceData } from "../types";
+import { ParsedRaceEvent, ParsedRaceTeam, RaceData, RaceSettings } from "../types";
 import { LapItem } from "@/app/heats/types";
+import { buildLapFilterContext, computeExcludedLapCounts } from "../lapFilters";
 
 interface PdfReportProps {
   teams: Record<string, ParsedRaceTeam>;
@@ -30,8 +31,7 @@ function computeStintStats(
   stintNumber: number,
   events: ParsedRaceEvent[],
   linkedLapsForTeam: LapItem[] | undefined,
-  maxLapTimeForAverageSec: number | undefined,
-  minLapTimeSec?: number,
+  settings: RaceSettings | undefined,
 ): StintStats {
   if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
 
@@ -57,13 +57,14 @@ function computeStintStats(
     endLap = currentPit.lapNumber;
   }
 
-  const minMs =
-    typeof minLapTimeSec === "number" && minLapTimeSec > 0 ? minLapTimeSec * 1000 : 0;
+  const ctx = buildLapFilterContext(settings);
+  const excluded = computeExcludedLapCounts(linkedLapsForTeam, teamPits, ctx);
   const laps = linkedLapsForTeam.filter(
-    (l) => l.lapCount >= startLap && l.lapCount <= endLap && l.time >= minMs,
+    (l) => l.lapCount >= startLap && l.lapCount <= endLap && !excluded.has(l.lapCount),
   );
   if (laps.length === 0) return { kind: "no-data" };
 
+  const maxLapTimeForAverageSec = settings?.maxLapTimeForAverageSec;
   const maxMs =
     typeof maxLapTimeForAverageSec === "number" && maxLapTimeForAverageSec > 0
       ? maxLapTimeForAverageSec * 1000
@@ -114,8 +115,6 @@ export const PdfReport: React.FC<PdfReportProps> = ({
     });
   }
 
-  const maxLapSec = raceData.settings?.maxLapTimeForAverageSec;
-  const minLapSec = raceData.settings?.minLapTimeSec;
 
   // Хронологическая история использования карта
   const getKartHistory = (kartNumber: string) => {
@@ -161,7 +160,7 @@ export const PdfReport: React.FC<PdfReportProps> = ({
             }
 
             const stats = linkedHeat && linkedLapsByKart
-              ? computeStintStats(team.startKart, stintNumber, events, linkedLapsByKart[team.startKart], maxLapSec, minLapSec)
+              ? computeStintStats(team.startKart, stintNumber, events, linkedLapsByKart[team.startKart], raceData.settings)
               : null;
 
             kartUsageHistory.push({
