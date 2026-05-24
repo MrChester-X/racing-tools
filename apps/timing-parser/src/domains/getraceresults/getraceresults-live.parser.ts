@@ -51,6 +51,7 @@ export interface ParsedDispatch {
 export class GrrLiveParser {
   private readonly logger = new Logger(GrrLiveParser.name);
   private columnIndex = new Map<string, number>();
+  private columnIndexLower = new Map<string, number>();
   private rowToKart = new Map<number, string>();
   private karts = new Map<string, KartState>();
   private heatName: string | null = null;
@@ -62,6 +63,7 @@ export class GrrLiveParser {
       this.logger.log(`Resetting parser state: ${reason}`);
     }
     this.columnIndex.clear();
+    this.columnIndexLower.clear();
     this.rowToKart.clear();
     this.karts.clear();
     this.heatName = null;
@@ -173,8 +175,10 @@ export class GrrLiveParser {
   private handleResultsInit(init: GrrResultsInit, laps: GrrLap[]): void {
     if (!init?.l?.h) return;
     this.columnIndex.clear();
+    this.columnIndexLower.clear();
     init.l.h.forEach((col: GrrColumn, idx: number) => {
       this.columnIndex.set(col.n, idx);
+      this.columnIndexLower.set(col.n.toLowerCase(), idx);
     });
     this.rowToKart.clear();
     this.karts.clear();
@@ -186,14 +190,15 @@ export class GrrLiveParser {
   private applyCellUpdates(updates: GrrResultsChange, laps: GrrLap[]): void {
     if (!Array.isArray(updates)) return;
 
-    const posIdx = this.columnIndex.get('position');
-    const nameIdx = this.columnIndex.get('name');
-    const numIdx = this.columnIndex.get('startnumber');
-    const classIdx = this.columnIndex.get('class');
-    const gapIdx = this.columnIndex.get('hole');
-    const lastIdx = this.columnIndex.get('lastRoundTime');
-    const bestIdx = this.columnIndex.get('fastestRoundTime');
-    const bestRoundIdx = this.columnIndex.get('fastestRoundNumber');
+    const posIdx = this.findColIdx('position');
+    const nameIdx = this.findColIdx('name', 'currentDriver');
+    const numIdx = this.findColIdx('startnumber');
+    const classIdx = this.findColIdx('class');
+    const gapIdx = this.findColIdx('hole');
+    const lastIdx = this.findColIdx('lastRoundTime');
+    const bestIdx = this.findColIdx('fastestRoundTime');
+    const bestRoundIdx = this.findColIdx('fastestRoundNumber');
+    const teamIdx = this.findColIdx('team name', 'teamName', 'team');
 
     // Pass 1: resolve row → kart identity so further cells route correctly.
     for (const upd of updates) {
@@ -228,8 +233,12 @@ export class GrrLiveParser {
 
       if (col === posIdx) {
         kart.position = parseIntSafe(value);
+      } else if (col === teamIdx) {
+        const team = stringValue(value);
+        if (team) kart.driverName = team;
       } else if (col === nameIdx) {
-        kart.driverName = stringValue(value);
+        const name = stringValue(value);
+        if (name && !kart.driverName) kart.driverName = name;
       } else if (col === classIdx) {
         kart.klass = stringValue(value);
       } else if (col === gapIdx) {
@@ -293,6 +302,16 @@ export class GrrLiveParser {
         },
       });
     }
+  }
+
+  private findColIdx(...names: string[]): number | undefined {
+    for (const name of names) {
+      const direct = this.columnIndex.get(name);
+      if (direct !== undefined) return direct;
+      const lower = this.columnIndexLower.get(name.toLowerCase());
+      if (lower !== undefined) return lower;
+    }
+    return undefined;
   }
 
   private findLeaderLap(): number | null {
