@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { ParsedRaceTeam } from "@/app/mega-secret-pits/types";
 import Kart from "@/app/mega-secret-pits/Kart";
 import TrashIcon from "./icons/TrashIcon";
+import EditIcon from "./icons/EditIcon";
 import DeleteTeamModal from "./DeleteTeamModal";
+import EditTeamNameModal from "./EditTeamNameModal";
 import { useRaceStore } from "../store/useRaceStore";
 import { useLinkedHeatStore, selectAbsoluteBest } from "../linked-heat/useLinkedHeatStore";
 import { useInProgressLap, formatInProgressElapsed } from "../linked-heat/useInProgressLap";
@@ -156,12 +158,18 @@ function LinkedHeatOverlay({ startKart }: OverlayProps) {
 }
 
 export default function TeamRow({ team, onKartClick, sortDelta }: TeamRowProps) {
-  const { deleteTeam } = useRaceStore();
+  const { deleteTeam, renameTeam } = useRaceStore();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const handleDeleteConfirm = () => {
     deleteTeam(team);
     setIsDeleteModalOpen(false);
+  };
+
+  const handleRenameSubmit = (name: string) => {
+    renameTeam(team.startKart, name);
+    setIsEditModalOpen(false);
   };
   return (
     <>
@@ -197,8 +205,15 @@ export default function TeamRow({ team, onKartClick, sortDelta }: TeamRowProps) 
             })}
           </div>
 
-          {/* Delete button zone - center aligned */}
-          <div className="flex items-center">
+          {/* Action buttons zone - center aligned */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsEditModalOpen(true)}
+              className="p-2 text-blue-300 hover:text-blue-200 hover:bg-blue-500/20 rounded-lg transition-all duration-200"
+              title="Переименовать команду"
+            >
+              <EditIcon className="w-4 h-4" />
+            </button>
             <button
               onClick={() => setIsDeleteModalOpen(true)}
               className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-lg transition-all duration-200"
@@ -227,13 +242,22 @@ export default function TeamRow({ team, onKartClick, sortDelta }: TeamRowProps) 
               <LinkedHeatOverlay startKart={team.startKart} />
             </div>
           </div>
-          <button
-            onClick={() => setIsDeleteModalOpen(true)}
-            className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-lg transition-all duration-200"
-            title="Удалить команду"
-          >
-            <TrashIcon className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsEditModalOpen(true)}
+              className="p-2 text-blue-300 hover:text-blue-200 hover:bg-blue-500/20 rounded-lg transition-all duration-200"
+              title="Переименовать команду"
+            >
+              <EditIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-lg transition-all duration-200"
+              title="Удалить команду"
+            >
+              <TrashIcon className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Karts grid for mobile */}
@@ -257,6 +281,13 @@ export default function TeamRow({ team, onKartClick, sortDelta }: TeamRowProps) 
         teamToDelete={team}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDeleteConfirm}
+      />
+
+      <EditTeamNameModal
+        isOpen={isEditModalOpen}
+        team={team}
+        onClose={() => setIsEditModalOpen(false)}
+        onSubmit={handleRenameSubmit}
       />
     </>
   );

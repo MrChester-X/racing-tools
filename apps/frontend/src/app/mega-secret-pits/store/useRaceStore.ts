@@ -67,6 +67,7 @@ interface RaceStore {
 
   // Team actions
   addTeam: (name: string, startKart: string) => boolean;
+  renameTeam: (startKart: string, name: string) => boolean;
   deleteTeam: (team: ParsedRaceTeam) => void;
 
   // Event actions
@@ -302,6 +303,24 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
     get().setRaceData(updatedRaceData);
     get().saveRaceData();
     return true; // Success
+  },
+
+  renameTeam: (startKart: string, name: string): boolean => {
+    if (isViewerLocked()) return false;
+    const { raceData } = get();
+    if (!raceData) return false;
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+
+    const idx = raceData.teams.findIndex((t) => t.startKart === startKart);
+    if (idx === -1) return false;
+    if (raceData.teams[idx].name === trimmed) return false;
+
+    const teams = raceData.teams.slice();
+    teams[idx] = { ...teams[idx], name: trimmed };
+    get().setRaceData({ ...raceData, teams });
+    get().saveRaceData();
+    return true;
   },
 
   deleteTeam: (team: ParsedRaceTeam) => {

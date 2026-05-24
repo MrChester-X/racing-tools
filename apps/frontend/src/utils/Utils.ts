@@ -53,25 +53,18 @@ export class Utils {
     // );
   }
 
+  private static readonly LANE_LETTERS = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И", "Й"];
+
   static getLaneLetter(lane: number) {
-    if (lane === 0) {
-      return "А";
-    }
-    if (lane === 1) {
-      return "Б";
-    }
-    return "unknown";
+    return Utils.LANE_LETTERS[lane] ?? "unknown";
   }
 
   static getLetterLane(letter: string) {
-    letter = letter.toLowerCase();
-    if (letter === "а") {
-      return 0;
+    const idx = Utils.LANE_LETTERS.findIndex((l) => l.toLowerCase() === letter.toLowerCase());
+    if (idx === -1) {
+      throw new Error(`Невалидная буква ${letter} явахуи с тебя`);
     }
-    if (letter === "б") {
-      return 1;
-    }
-    throw new Error(`Невалидная буква ${letter} явахуи с тебя`);
+    return idx;
   }
 
   static formatRaceTime(eventTimestamp: number | undefined, raceStartTime: number | null): string | null {
