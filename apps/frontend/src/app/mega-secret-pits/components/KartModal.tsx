@@ -19,6 +19,7 @@ function computeStintStats(
   events: ParsedRaceEvent[],
   linkedLapsForTeam: LapItem[] | undefined,
   maxLapTimeForAverageSec: number | undefined,
+  minLapTimeSec?: number,
 ): StintStats {
   if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
 
@@ -44,8 +45,10 @@ function computeStintStats(
     endLap = currentPit.lapNumber;
   }
 
+  const minMs =
+    typeof minLapTimeSec === "number" && minLapTimeSec > 0 ? minLapTimeSec * 1000 : 0;
   const laps = linkedLapsForTeam.filter(
-    (l) => l.lapCount >= startLap && l.lapCount <= endLap,
+    (l) => l.lapCount >= startLap && l.lapCount <= endLap && l.time >= minMs,
   );
   if (laps.length === 0) return { kind: "no-data" };
 
@@ -353,6 +356,7 @@ export default function KartModal({ isOpen, onClose, kartNumber }: KartModalProp
                           events,
                           lapsByKart.get(team.startKart),
                           raceData?.settings?.maxLapTimeForAverageSec,
+                          raceData?.settings?.minLapTimeSec,
                         )
                       : null;
                     return (

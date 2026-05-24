@@ -30,6 +30,11 @@ export default function RaceSettingsModal({
       ? String(currentSettings.maxLapTimeForAverageSec)
       : "",
   );
+  const [minLapTimeInput, setMinLapTimeInput] = useState(
+    currentSettings?.minLapTimeSec != null
+      ? String(currentSettings.minLapTimeSec)
+      : "",
+  );
 
   // Обработка анимации модалки
   useEffect(() => {
@@ -62,6 +67,11 @@ export default function RaceSettingsModal({
       setMaxLapTimeInput(
         currentSettings.maxLapTimeForAverageSec != null
           ? String(currentSettings.maxLapTimeForAverageSec)
+          : "",
+      );
+      setMinLapTimeInput(
+        currentSettings.minLapTimeSec != null
+          ? String(currentSettings.minLapTimeSec)
           : "",
       );
     }
@@ -121,6 +131,7 @@ export default function RaceSettingsModal({
 
   const handleSave = () => {
     const parsedMax = parseFloat(maxLapTimeInput.replace(",", "."));
+    const parsedMin = parseFloat(minLapTimeInput.replace(",", "."));
     const settings: RaceSettings = {
       raceName: raceName.trim() || undefined,
       pitlanesCount,
@@ -128,6 +139,8 @@ export default function RaceSettingsModal({
       raceComments: raceComments.trim() || undefined,
       maxLapTimeForAverageSec:
         Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : undefined,
+      minLapTimeSec:
+        Number.isFinite(parsedMin) && parsedMin > 0 ? parsedMin : undefined,
     };
 
     onSave(settings);
@@ -256,6 +269,26 @@ export default function RaceSettingsModal({
           />
           <div className="text-xs text-gray-400 mt-1">
             Круги длительностью больше этого значения не учитываются в среднем (pit-out, заезды в бокс и т.п.). Пусто = учитывать все круги.
+          </div>
+        </div>
+
+        {/* Минимальное время круга */}
+        <div>
+          <label className="block text-sm font-medium text-gray-200 mb-2">
+            Мин. время круга (сек)
+            <span className="text-gray-500 font-normal"> — опционально</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={minLapTimeInput}
+            onChange={(e) => setMinLapTimeInput(e.target.value)}
+            placeholder="например, 30"
+            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+          />
+          <div className="text-xs text-gray-400 mt-1">
+            Круги короче этого значения не учитываются нигде: ни в бесте, ни в среднем, ни в статистике стинтов. Пусто = учитывать все круги.
           </div>
         </div>
 

@@ -48,6 +48,7 @@ export function useInProgressLap(startKart: string): InProgressLap | null {
   const latest = useLinkedHeatStore((s) => s.latestByKart.get(startKart));
   const laps = useLinkedHeatStore((s) => s.lapsByKart.get(startKart));
   const maxLapSec = useRaceStore((s) => s.raceData?.settings?.maxLapTimeForAverageSec);
+  const minLapSec = useRaceStore((s) => s.raceData?.settings?.minLapTimeSec);
   const [now, setNow] = useState(() => Date.now());
 
   const passAtStr = latest?.passAt ?? null;
@@ -62,14 +63,15 @@ export function useInProgressLap(startKart: string): InProgressLap | null {
   const avgRecentMs = useMemo(() => {
     if (!laps || laps.length === 0) return null;
     const maxMs = typeof maxLapSec === 'number' && maxLapSec > 0 ? maxLapSec * 1000 : Infinity;
+    const minMs = typeof minLapSec === 'number' && minLapSec > 0 ? minLapSec * 1000 : 0;
     const top = [...laps]
       .sort((a, b) => b.lapCount - a.lapCount)
-      .filter((l) => l.time <= maxMs)
+      .filter((l) => l.time <= maxMs && l.time >= minMs)
       .slice(0, AVG_WINDOW);
     if (top.length === 0) return null;
     const sum = top.reduce((s, l) => s + l.time, 0);
     return sum / top.length;
-  }, [laps, maxLapSec]);
+  }, [laps, maxLapSec, minLapSec]);
 
   if (!latest || !hasBase) return null;
 

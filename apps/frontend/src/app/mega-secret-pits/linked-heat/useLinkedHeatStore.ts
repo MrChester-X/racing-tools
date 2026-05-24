@@ -23,6 +23,9 @@ interface LinkedHeatState {
   attachWatch: () => () => void;
   setLink: (id: string | null) => Promise<void>;
   importTeams: () => { added: number; skipped: number };
+  /** Recompute derived maps (best/latest/first) from lapsByKart — call this when
+   * settings affecting lap filtering (e.g. minLapTimeSec) change. */
+  rebuildDerivedMaps: () => void;
   /** internal — used by watcher */
   _load: (id: string | null) => Promise<void>;
 }
@@ -240,6 +243,17 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
     });
   },
 
+  rebuildDerivedMaps: () => {
+    const { lapsByKart } = get();
+    const latestByKart = new Map<string, LapItem>();
+    const bestByKart = new Map<string, number>();
+    const firstLapByKart = new Map<string, LapItem>();
+    for (const laps of lapsByKart.values()) {
+      for (const lap of laps) applyLap(lap, latestByKart, bestByKart, firstLapByKart, lapsByKart);
+    }
+    set({ latestByKart, bestByKart, firstLapByKart });
+  },
+
   importTeams: () => {
     const raceData = useRaceStore.getState().raceData;
     if (!raceData) return { added: 0, skipped: 0 };
@@ -289,6 +303,11 @@ export function selectAbsoluteBest(bestByKart: Map<string, number>): number | un
   return result;
 }
 
+function getMinLapMs(): number {
+  const min = useRaceStore.getState().raceData?.settings?.minLapTimeSec;
+  return typeof min === 'number' && min > 0 ? min * 1000 : 0;
+}
+
 function applyLap(
   lap: LapItem,
   latestByKart: Map<string, LapItem>,
@@ -296,10 +315,13 @@ function applyLap(
   firstLapByKart: Map<string, LapItem>,
   lapsByKart: Map<string, LapItem[]>,
 ) {
+  const minMs = getMinLapMs();
   const prev = latestByKart.get(lap.kart);
   if (!prev || lap.lapCount > prev.lapCount) latestByKart.set(lap.kart, lap);
-  const prevBest = bestByKart.get(lap.kart);
-  if (prevBest === undefined || lap.time < prevBest) bestByKart.set(lap.kart, lap.time);
+  if (lap.time >= minMs) {
+    const prevBest = bestByKart.get(lap.kart);
+    if (prevBest === undefined || lap.time < prevBest) bestByKart.set(lap.kart, lap.time);
+  }
   const prevFirst = firstLapByKart.get(lap.kart);
   if (!prevFirst || lap.lapCount < prevFirst.lapCount) firstLapByKart.set(lap.kart, lap);
 

@@ -506,6 +506,7 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
     const { raceData } = get();
     if (!raceData) return;
 
+    const prevMin = raceData.settings?.minLapTimeSec;
     const updatedRaceData = {
       ...raceData,
       settings,
@@ -516,6 +517,15 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
 
     get().setRaceData(updatedRaceData);
     get().saveRaceData();
+
+    // If the min-lap-time filter changed, derived maps (bestByKart, etc.)
+    // in the linked-heat store need to be recomputed from raw lapsByKart.
+    if (prevMin !== settings.minLapTimeSec) {
+      // Dynamic import to avoid a circular dependency between stores.
+      import("../linked-heat/useLinkedHeatStore").then(({ useLinkedHeatStore }) => {
+        useLinkedHeatStore.getState().rebuildDerivedMaps();
+      });
+    }
   },
 
   getRaceSettings: (): RaceSettings | null => {

@@ -67,6 +67,7 @@ export function generateMarkdown(input: ReportInput): string {
       linkedLapsByKart,
       !!linkedHeat,
       maxLapSec,
+      raceData.settings?.minLapTimeSec,
     );
     const summary = getKartSummary(history);
     const isInPits = kartsInPits.has(kartNumber);

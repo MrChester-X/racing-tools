@@ -31,6 +31,7 @@ function computeStintStats(
   events: ParsedRaceEvent[],
   linkedLapsForTeam: LapItem[] | undefined,
   maxLapTimeForAverageSec: number | undefined,
+  minLapTimeSec?: number,
 ): StintStats {
   if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
 
@@ -56,8 +57,10 @@ function computeStintStats(
     endLap = currentPit.lapNumber;
   }
 
+  const minMs =
+    typeof minLapTimeSec === "number" && minLapTimeSec > 0 ? minLapTimeSec * 1000 : 0;
   const laps = linkedLapsForTeam.filter(
-    (l) => l.lapCount >= startLap && l.lapCount <= endLap,
+    (l) => l.lapCount >= startLap && l.lapCount <= endLap && l.time >= minMs,
   );
   if (laps.length === 0) return { kind: "no-data" };
 
@@ -112,6 +115,7 @@ export const PdfReport: React.FC<PdfReportProps> = ({
   }
 
   const maxLapSec = raceData.settings?.maxLapTimeForAverageSec;
+  const minLapSec = raceData.settings?.minLapTimeSec;
 
   // Хронологическая история использования карта
   const getKartHistory = (kartNumber: string) => {
@@ -157,7 +161,7 @@ export const PdfReport: React.FC<PdfReportProps> = ({
             }
 
             const stats = linkedHeat && linkedLapsByKart
-              ? computeStintStats(team.startKart, stintNumber, events, linkedLapsByKart[team.startKart], maxLapSec)
+              ? computeStintStats(team.startKart, stintNumber, events, linkedLapsByKart[team.startKart], maxLapSec, minLapSec)
               : null;
 
             kartUsageHistory.push({
