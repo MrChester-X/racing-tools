@@ -10,6 +10,13 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const PING_INTERVAL_MS = 15_000;
 const PONG_TIMEOUT_MS = 10_000;
 
+export class NoActiveSessionError extends Error {
+  constructor() {
+    super('No active session');
+    this.name = 'NoActiveSessionError';
+  }
+}
+
 interface NegotiateResponse {
   Url: string;
   ConnectionToken: string;
@@ -59,6 +66,9 @@ export class GrrSignalRClient {
     const html = await res.text();
     const match = html.match(/LiveTimingApp\((\{[^)]+\})\)/);
     if (!match) {
+      if (/No active session/i.test(html)) {
+        throw new NoActiveSessionError();
+      }
       throw new Error('Failed to find LiveTimingApp config in page');
     }
     const config = JSON.parse(match[1]);

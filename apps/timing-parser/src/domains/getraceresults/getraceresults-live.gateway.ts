@@ -9,13 +9,14 @@ import { TimingService } from '../timing/timing.service';
 import { backoffDelayMs } from '../racemann/live/retry';
 import { GrrTrackConfig } from './getraceresults-live.config';
 import { GrrLiveParser, ParsedHeatInfo } from './getraceresults-live.parser';
-import { GrrSignalRClient } from './getraceresults-signalr.client';
+import { GrrSignalRClient, NoActiveSessionError } from './getraceresults-signalr.client';
 import { igoraKartingConfig } from './track/igora-karting.config';
 import { SignalRFrame } from './getraceresults.types';
 
 const TRACKS: GrrTrackConfig[] = [igoraKartingConfig];
 const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_CAP_MS = 30_000;
+const NO_SESSION_RETRY_MS = 60_000;
 
 @Injectable()
 export class GrrLiveGateway implements OnModuleInit, OnModuleDestroy {
@@ -66,8 +67,8 @@ class TrackRunner {
 
   start(): void {
     this.openConnection().catch((err) => {
-      this.logger.error(`Initial connect failed: ${(err as Error).message}`);
-      this.scheduleReconnect();
+      this.reportConnectError('Initial connect', err as Error);
+      this.scheduleReconnect(err as Error);
     });
   }
 
@@ -238,24 +239,35 @@ class TrackRunner {
     this.logger.log(`Loaded ${rows.length} existing laps for heat "${heat.name}"`);
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(lastError?: Error): void {
     if (this.stopped) return;
     if (this.reconnectTimer) return;
 
-    const delay = backoffDelayMs(this.reconnectAttempt, RECONNECT_BASE_MS, RECONNECT_CAP_MS);
+    const noSession = lastError instanceof NoActiveSessionError;
+    const delay = noSession
+      ? NO_SESSION_RETRY_MS
+      : backoffDelayMs(this.reconnectAttempt, RECONNECT_BASE_MS, RECONNECT_CAP_MS);
     this.reconnectAttempt++;
     this.logger.log(
-      `Scheduling reconnect in ${Math.round(delay)}ms (attempt ${this.reconnectAttempt})`,
+      `Scheduling reconnect in ${Math.round(delay)}ms (attempt ${this.reconnectAttempt}${noSession ? ', no active session' : ''})`,
     );
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.stopped) return;
       this.openConnection().catch((err) => {
-        this.logger.error(`Reconnect failed: ${(err as Error).message}`);
-        this.scheduleReconnect();
+        this.reportConnectError('Reconnect', err as Error);
+        this.scheduleReconnect(err as Error);
       });
     }, delay);
+  }
+
+  private reportConnectError(label: string, err: Error): void {
+    if (err instanceof NoActiveSessionError) {
+      this.logger.log(`${label}: no active session`);
+    } else {
+      this.logger.error(`${label} failed: ${err.message}`);
+    }
   }
 }
 
