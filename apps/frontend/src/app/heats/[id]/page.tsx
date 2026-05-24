@@ -141,7 +141,7 @@ export default function HeatPage() {
     : Array.from({ length: maxLap }, (_, i) => maxLap - i);
 
   return (
-    <div className="min-h-screen p-8 max-w-[95vw] mx-auto">
+    <div className="min-h-screen p-8 max-w-[95vw] mx-auto overflow-x-hidden">
       {/* Header */}
       <div className="mb-3">
         <Link href="/heats" className="text-gray-600 hover:text-gray-400 text-xs uppercase tracking-wider transition-colors">
@@ -178,7 +178,7 @@ export default function HeatPage() {
       </div>
 
       {/* Laps table */}
-      <div className="overflow-x-auto rounded-xl border border-white/10 w-fit">
+      <div className="overflow-x-auto rounded-xl border border-white/10 w-full">
         <table className="border-collapse">
           <thead>
             <tr>
