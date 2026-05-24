@@ -33,7 +33,14 @@ interface PendingLap {
   timeMs: number;
   prevGap: string;
   isInitial: boolean;
+  isPit: boolean;
+  isOut: boolean;
 }
+
+// Color/state codes in the 4th element of lastRoundTime cell updates.
+// See renderCell switch in the original LiveTiming client.
+const LAST_TIME_COLOR_PIT = '-2'; // "P <time>"  — in-lap (pit entry lap)
+const LAST_TIME_COLOR_OUT = '-3'; // "O <time>"  — out-lap (after pit)
 
 export interface ParsedHeatInfo {
   name: string;
@@ -257,7 +264,16 @@ export class GrrLiveParser {
         kart.initialized = true;
         const timeMs = usToMs(raw);
         if (timeMs > 0) {
-          pending.push({ startNumber: sn, rowIndex: row, timeMs, prevGap, isInitial: isFirst });
+          const colorCode = upd.length > 3 ? stringValue(upd[3]) : '';
+          pending.push({
+            startNumber: sn,
+            rowIndex: row,
+            timeMs,
+            prevGap,
+            isInitial: isFirst,
+            isPit: colorCode === LAST_TIME_COLOR_PIT,
+            isOut: colorCode === LAST_TIME_COLOR_OUT,
+          });
         }
       }
     }
@@ -302,6 +318,8 @@ export class GrrLiveParser {
               : null,
           fastestRoundNumber: kart.fastestRoundNumber || null,
           gap: kart.gap || null,
+          isPit: p.isPit || undefined,
+          isOut: p.isOut || undefined,
         },
       });
     }
