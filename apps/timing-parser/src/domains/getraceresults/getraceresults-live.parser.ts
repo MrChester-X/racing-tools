@@ -265,16 +265,20 @@ export class GrrLiveParser {
     if (pending.length === 0) return;
 
     // Pass 3: determine lap count for each pending lap using GAP semantics.
-    // `-- N laps --` in the gap column means the kart is currently driving its
-    // Nth lap, so the lap that just finished (the one whose time we received)
-    // is N - 1.
+    // `-- N laps --` in a kart's gap column means N completed laps; the lap
+    // that just finished (the one whose time arrived in lastRoundTime) is N.
+    // For karts without a marker, inherit the lap count from the closest
+    // better-positioned kart that does have one — every marker boundary in
+    // position order represents one full lap behind.
+    const lapByKart = this.computeLapByKart();
     for (const p of pending) {
       const kart = this.karts.get(p.startNumber);
       if (!kart) continue;
-      const currentLap = parseLapsMarker(kart.gap) ?? parseLapsMarker(p.prevGap);
+      const knownLap =
+        lapByKart.get(p.startNumber) ?? parseLapsMarker(p.prevGap) ?? null;
       let lapCountMode: 'race' | 'session';
-      if (currentLap != null && currentLap > 1) {
-        kart.lapCount = currentLap - 1;
+      if (knownLap != null && knownLap > 0) {
+        kart.lapCount = knownLap;
         lapCountMode = 'race';
       } else {
         kart.lapCount += 1;
@@ -311,6 +315,20 @@ export class GrrLiveParser {
       if (lower !== undefined) return lower;
     }
     return undefined;
+  }
+
+  private computeLapByKart(): Map<string, number> {
+    const ordered = Array.from(this.karts.entries())
+      .filter(([, k]) => k.position > 0)
+      .sort(([, a], [, b]) => a.position - b.position);
+    const result = new Map<string, number>();
+    let lastMarker: number | null = null;
+    for (const [sn, k] of ordered) {
+      const marker = parseLapsMarker(k.gap);
+      if (marker != null && marker > 0) lastMarker = marker;
+      if (lastMarker != null) result.set(sn, lastMarker);
+    }
+    return result;
   }
 
   private buildHeatInfo(): ParsedHeatInfo | null {
