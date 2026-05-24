@@ -65,4 +65,13 @@ export class TimingService {
   async insertRawMessage(kartodromId: string, data: any): Promise<void> {
     await this.rawMessageRepository.save({ kartodromId, data });
   }
+
+  async getLapsForHeat(
+    heatId: string,
+  ): Promise<Array<Pick<Lap, 'driverExternalId' | 'lapCount' | 'time'>>> {
+    return this.lapRepository.find({
+      where: { heat: { id: heatId } },
+      select: ['driverExternalId', 'lapCount', 'time'],
+    });
+  }
 }
