@@ -139,21 +139,22 @@ class TrackRunner {
       if (lap.isInitial && !this.shouldInsertInitial(lap, externalId)) {
         continue;
       }
+      const effectiveLapCount = this.resolveLapCount(lap, externalId);
       const ok = await this.timing.insertLap({
         heat: this.currentHeat,
         driverName: lap.driverName,
         kart: lap.kart,
         position: lap.position,
-        lapCount: lap.lapCount,
+        lapCount: effectiveLapCount,
         time: lap.timeMs,
         driverExternalId: externalId,
         meta: lap.meta,
         passAt: lap.isInitial ? null : new Date(),
       });
       if (ok) {
-        this.rememberLap(externalId, lap.lapCount, lap.timeMs);
+        this.rememberLap(externalId, effectiveLapCount, lap.timeMs);
         this.logger.log(
-          `${lap.isInitial ? 'Init' : 'New'} lap kart=${lap.kart} #${lap.lapCount} t=${lap.timeMs}ms pos=${lap.position}`,
+          `${lap.isInitial ? 'Init' : 'New'} lap kart=${lap.kart} #${effectiveLapCount} t=${lap.timeMs}ms pos=${lap.position} mode=${lap.lapCountMode}`,
         );
       }
     }
@@ -169,6 +170,19 @@ class TrackRunner {
       return !entry.lapCounts.has(lap.lapCount);
     }
     return !entry.times.has(lap.timeMs);
+  }
+
+  private resolveLapCount(
+    lap: { lapCount: number; lapCountMode: 'race' | 'session' },
+    externalId: number,
+  ): number {
+    if (lap.lapCountMode === 'race') return lap.lapCount;
+    const entry = this.existingByKart.get(externalId);
+    let max = 0;
+    if (entry) {
+      for (const n of entry.lapCounts) if (n > max) max = n;
+    }
+    return max + 1;
   }
 
   private rememberLap(externalId: number, lapCount: number, timeMs: number): void {
