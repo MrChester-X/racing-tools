@@ -788,21 +788,25 @@ function KartStintHistory({ kart }: { kart: string }) {
   );
 }
 
-// Live timer of the current (in-progress) lap — ticks every 100ms via the shared
-// useInProgressLap tick. Turns red once it exceeds the team's 3-lap average.
+// Live countdown to the end of the current (in-progress) lap — ticks every 100ms
+// via the shared useInProgressLap tick. The expected lap length is the same metric
+// the progress bar uses: the average of the 3 most recent laps, excluding pits and
+// laps over the settings' max-lap-time threshold. Goes red and counts up once the
+// lap overruns that estimate.
 function InProgressLapTime({ startKart, isWhite }: { startKart: string; isWhite: boolean }) {
   const inProgress = useInProgressLap(startKart);
-  if (!inProgress) return null;
-  const overrun =
-    inProgress.avgRecentMs !== null && inProgress.avgRecentMs > 0 && inProgress.elapsedMs > inProgress.avgRecentMs;
+  if (!inProgress || inProgress.avgRecentMs === null || inProgress.avgRecentMs <= 0) return null;
+  const remainingMs = inProgress.avgRecentMs - inProgress.elapsedMs;
+  const overrun = remainingMs < 0;
   return (
     <div
       className={`text-[9px] font-mono font-bold leading-tight ${
         overrun ? "text-red-400" : isWhite ? "text-black/80" : "text-cyan-200"
       }`}
-      title={`Текущий круг ${inProgress.nextLapNumber}`}
+      title={`До конца круга ${inProgress.nextLapNumber} (оценка по среднему за 3 круга)`}
     >
-      {formatInProgressElapsed(inProgress.elapsedMs)}
+      {overrun ? "+" : "−"}
+      {formatInProgressElapsed(Math.abs(remainingMs))}
     </div>
   );
 }
