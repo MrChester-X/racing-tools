@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRaceStore } from "../store/useRaceStore";
-import { useLiveTimingStore } from "../store/useLiveTimingStore";
 import { ParsedRaceTeam } from "../types";
 import { Utils } from "../../../utils/Utils";
 import RaceTimer from "../components/RaceTimer";
@@ -33,19 +32,8 @@ interface KartActionModalState {
   teamStartKart?: string;
 }
 
-function formatLapTime(ms: number): string {
-  if (!ms || ms <= 0) return "-";
-  const seconds = ms / 1000;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (mins > 0) return `${mins}:${secs.toFixed(1).padStart(4, "0")}`;
-  return secs.toFixed(1);
-}
-
 export default function MobileMode() {
   const { raceData, pitlane, teams, events, loadInitialData, addEvent, deleteEvent, undoLastAction, undoHistory, setKartColors, getRaceTimer } = useRaceStore();
-  const { connected, connect, disconnect, sessions, selectedSessionName, selectSession, loadSessions, getKartLiveData, currentSessionName } =
-    useLiveTimingStore();
 
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [kartActionModal, setKartActionModal] = useState<KartActionModalState | null>(null);
@@ -53,14 +41,12 @@ export default function MobileMode() {
   const [newKartNumber, setNewKartNumber] = useState("");
   const [replaceKartNumber, setReplaceKartNumber] = useState("");
   const [nextNewKart, setNextNewKart] = useState(101);
-  const [showLivePanel, setShowLivePanel] = useState(false);
 
   const lastClickRef = useRef<{ kart: string; time: number } | null>(null);
 
   useEffect(() => {
     loadInitialData();
-    loadSessions();
-  }, [loadInitialData, loadSessions]);
+  }, [loadInitialData]);
 
   const handleKartClick = useCallback(
     (kart: string, opts?: { inPitlane?: { laneIndex: number }; teamStartKart?: string }) => {
@@ -92,15 +78,12 @@ export default function MobileMode() {
   const handlePitlaneClick = useCallback(
     (laneIndex: number) => {
       if (!selectedTeam) return;
-      const team = teams?.[selectedTeam];
-      const currentKart = team?.karts[team.karts.length - 1];
-      const lapNumber = selectedSessionName && currentKart ? getKartLiveData(currentKart)?.lapCount : undefined;
-      const success = addEvent("pit", selectedTeam, laneIndex, -1, undefined, undefined, lapNumber ?? undefined);
+      const success = addEvent("pit", selectedTeam, laneIndex, -1);
       if (success) {
         setSelectedTeam(null);
       }
     },
-    [selectedTeam, addEvent, teams, selectedSessionName, getKartLiveData],
+    [selectedTeam, addEvent],
   );
 
   const handleColorChange = useCallback(
@@ -206,18 +189,9 @@ export default function MobileMode() {
       {/* Header */}
       <div className="flex items-center justify-between px-3 h-10 bg-black/50 border-b border-white/10 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <a href="/pits" className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-bold">
+          <a href="/mega-secret-pits" className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-bold">
             ВЫХОД
           </a>
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowLivePanel(!showLivePanel); }}
-            className={`px-2 py-1 rounded text-xs font-bold flex items-center gap-1 ${
-              connected ? "bg-green-700 hover:bg-green-600" : "bg-rose-700 hover:bg-rose-600"
-            }`}
-          >
-            <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-green-300 animate-pulse" : "bg-rose-300"}`} />
-            LIVE
-          </button>
         </div>
         <RaceTimer compact />
         <button
@@ -230,52 +204,6 @@ export default function MobileMode() {
           {undoHistory.length > 0 && lastEvent ? `ОТМЕНА ${lastEvent.kart}` : "ОТМЕНА"}
         </button>
       </div>
-
-      {/* Live timing panel */}
-      {showLivePanel && (
-        <div className="flex-shrink-0 px-3 pt-2" onClick={(e) => e.stopPropagation()}>
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-400">SMS-Timing</span>
-              {!connected ? (
-                <button onClick={connect} className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs font-bold">
-                  Подключиться
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  {currentSessionName && <span className="text-[10px] text-green-400 truncate max-w-[150px]">{currentSessionName}</span>}
-                  <button onClick={disconnect} className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs font-bold">
-                    Откл.
-                  </button>
-                </div>
-              )}
-            </div>
-            {/* Session selector */}
-            {Object.keys(sessions).length > 0 && (
-              <div>
-                <div className="text-[10px] text-gray-500 mb-1">Заезд для сопоставления:</div>
-                <div className="flex flex-wrap gap-1">
-                  {Object.values(sessions)
-                    .sort((a, b) => b.lastUpdate - a.lastUpdate)
-                    .map((s) => (
-                      <button
-                        key={s.name}
-                        onClick={() => selectSession(selectedSessionName === s.name ? null : s.name)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold truncate max-w-[200px] ${
-                          selectedSessionName === s.name
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                        }`}
-                      >
-                        {s.name}
-                      </button>
-                    ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Instruction bar — always rendered to avoid layout shift */}
       <div className="flex-shrink-0 px-3 pt-2">
@@ -384,7 +312,6 @@ export default function MobileMode() {
             const isWhite = isWhiteKart(currentKart, kartColors);
             const pitCount = team.karts.length - 1;
             const isSelected = selectedTeam === team.startKart;
-            const liveData = selectedSessionName ? getKartLiveData(currentKart) : null;
 
             return (
               <div
@@ -401,15 +328,7 @@ export default function MobileMode() {
                   <div className={`text-[9px] leading-tight mt-0.5 truncate w-full text-center ${isWhite ? "text-black/70" : "text-white/70"}`}>
                     {team.name}
                   </div>
-                  {liveData ? (
-                    <div className={`text-[9px] leading-tight ${isWhite ? "text-black/60" : "text-white/60"}`}>
-                      <span className="font-mono">{formatLapTime(liveData.lastLap)}</span>
-                      <span className="mx-0.5">|</span>
-                      <span>L{liveData.lapCount}</span>
-                    </div>
-                  ) : (
-                    <div className={`text-[9px] leading-tight ${isWhite ? "text-black/50" : "text-white/50"}`}>пит: {pitCount}</div>
-                  )}
+                  <div className={`text-[9px] leading-tight ${isWhite ? "text-black/50" : "text-white/50"}`}>пит: {pitCount}</div>
 
                   {currentKart !== team.startKart && (
                     <div

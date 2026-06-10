@@ -183,28 +183,12 @@ export default function Pits() {
                 <span className="sm:hidden">⚙️</span>
               </button>
               <a
-                href="/mega-secret-pits/focus"
-                className="flex items-center gap-1 px-2 sm:px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors duration-200 text-xs font-bold"
-                title="Переключиться в Режим волны"
-              >
-                <span className="hidden sm:inline">⚡</span>
-                <span className="text-xs sm:text-xs">РЕЖИМ ВОЛНЫ</span>
-              </a>
-              <a
                 href="/mega-secret-pits/mobile"
                 className="flex items-center gap-1 px-2 sm:px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-md transition-colors duration-200 text-xs font-bold"
                 title="Мобильный режим с drag&drop"
               >
                 <span className="hidden sm:inline">📱</span>
                 <span className="text-xs sm:text-xs">МОБИЛЬНЫЙ</span>
-              </a>
-              <a
-                href="/mega-secret-pits/live"
-                className="flex items-center gap-1 px-2 sm:px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md transition-colors duration-200 text-xs font-bold"
-                title="SMS-Timing Live"
-              >
-                <span className="hidden sm:inline">📡</span>
-                <span className="text-xs sm:text-xs">LIVE</span>
               </a>
               <button
                 onClick={handleExportPDF}
