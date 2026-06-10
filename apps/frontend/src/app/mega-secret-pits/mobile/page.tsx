@@ -6,6 +6,7 @@ import { useRoomStore } from "../rooms/useRoomStore";
 import { usePitlaneDisplayStore } from "../store/usePitlaneDisplayStore";
 import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
 import { useKartBests, computeStintStats, getTeamsOnKart } from "../linked-heat/kartBests";
+import { useInProgressLap, formatInProgressElapsed } from "../linked-heat/useInProgressLap";
 import { ParsedRaceTeam } from "../types";
 import { Utils } from "../../../utils/Utils";
 import RaceTimer from "../components/RaceTimer";
@@ -416,7 +417,7 @@ export default function MobileMode() {
                 onClick={(e) => { e.stopPropagation(); handleKartClick(currentKart, { teamStartKart: team.startKart }); }}
               >
                 <div
-                  className={`${colorBg} rounded-lg p-1.5 min-h-[84px] flex flex-col items-center justify-center shadow-md relative ${
+                  className={`${colorBg} rounded-lg overflow-hidden p-1.5 min-h-[84px] flex flex-col items-center justify-center shadow-md relative ${
                     isSelected ? "ring-2 ring-white" : ""
                   }`}
                 >
@@ -425,6 +426,7 @@ export default function MobileMode() {
                     {team.name}
                   </div>
                   <KartCardStats startKart={team.startKart} currentKart={currentKart} pitCount={pitCount} isWhite={isWhite} />
+                  <InProgressLapTime startKart={team.startKart} isWhite={isWhite} />
 
                   {currentKart !== team.startKart && (
                     <div
@@ -435,6 +437,7 @@ export default function MobileMode() {
                       {currentKart}
                     </div>
                   )}
+                  <InProgressLapBar startKart={team.startKart} />
                 </div>
               </div>
             );
@@ -781,6 +784,51 @@ function KartStintHistory({ kart }: { kart: string }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// Live timer of the current (in-progress) lap — ticks every 100ms via the shared
+// useInProgressLap tick. Turns red once it exceeds the team's 3-lap average.
+function InProgressLapTime({ startKart, isWhite }: { startKart: string; isWhite: boolean }) {
+  const inProgress = useInProgressLap(startKart);
+  if (!inProgress) return null;
+  const overrun =
+    inProgress.avgRecentMs !== null && inProgress.avgRecentMs > 0 && inProgress.elapsedMs > inProgress.avgRecentMs;
+  return (
+    <div
+      className={`text-[9px] font-mono font-bold leading-tight ${
+        overrun ? "text-red-400" : isWhite ? "text-black/80" : "text-cyan-200"
+      }`}
+      title={`Текущий круг ${inProgress.nextLapNumber}`}
+    >
+      {formatInProgressElapsed(inProgress.elapsedMs)}
+    </div>
+  );
+}
+
+// In-progress lap progress strip along the bottom edge of each team card — same
+// visualization as the main page (TeamRow's InProgressLapBar). Width = how far
+// the current lap has progressed vs the team's 3-lap average; turns red on overrun.
+function InProgressLapBar({ startKart }: { startKart: string }) {
+  const inProgress = useInProgressLap(startKart);
+  if (!inProgress || inProgress.avgRecentMs === null || inProgress.avgRecentMs <= 0) return null;
+  const ratio = inProgress.elapsedMs / inProgress.avgRecentMs;
+  const pct = Math.max(0, Math.min(100, ratio * 100));
+  const overrun = ratio > 1;
+  return (
+    <div
+      className="absolute bottom-0 left-0 right-0 h-0.5 bg-black/40 overflow-hidden rounded-b-lg"
+      title={`В круге ${inProgress.nextLapNumber} · среднее за 3 круга: ${formatInProgressElapsed(inProgress.avgRecentMs)}`}
+    >
+      <div
+        className={`h-full rounded-r-full transition-[width] duration-100 ease-linear ${
+          overrun
+            ? "bg-gradient-to-r from-red-600 to-red-400 shadow-[0_0_6px_rgba(248,113,113,0.7)]"
+            : "bg-gradient-to-r from-cyan-500 to-cyan-300 shadow-[0_0_6px_rgba(34,211,238,0.6)]"
+        }`}
+        style={{ width: `${pct}%` }}
+      />
     </div>
   );
 }
