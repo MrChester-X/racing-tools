@@ -1,7 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRaceStore } from "../store/useRaceStore";
+import { useRoomStore } from "../rooms/useRoomStore";
+import { usePitlaneDisplayStore } from "../store/usePitlaneDisplayStore";
+import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
+import { useKartBests, computeStintStats, getTeamsOnKart } from "../linked-heat/kartBests";
 import { ParsedRaceTeam } from "../types";
 import { Utils } from "../../../utils/Utils";
 import RaceTimer from "../components/RaceTimer";
@@ -34,6 +38,10 @@ interface KartActionModalState {
 
 export default function MobileMode() {
   const { raceData, pitlane, teams, events, loadInitialData, addEvent, deleteEvent, undoLastAction, undoHistory, setKartColors, getRaceTimer } = useRaceStore();
+  const { bootstrap, currentRoomId, currentRoom, sessionId, nickname, saveStatus, takeControl } = useRoomStore();
+  const exitDirection = usePitlaneDisplayStore((s) => s.exitDirection);
+  const order = usePitlaneDisplayStore((s) => s.order);
+  const hydratePitlaneDisplay = usePitlaneDisplayStore((s) => s.hydrate);
 
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [kartActionModal, setKartActionModal] = useState<KartActionModalState | null>(null);
@@ -44,9 +52,29 @@ export default function MobileMode() {
 
   const lastClickRef = useRef<{ kart: string; time: number } | null>(null);
 
+  const isOwner = !!currentRoom && currentRoom.ownerSessionId === sessionId;
+  const ownerLabel = currentRoom?.ownerSessionId ? currentRoom.ownerNickname ?? "Неизвестно" : "Нет владельца";
+
+  // Join the room (if any) so race data — including the timer — stays synced with
+  // the main page in real time; fall back to localStorage when not in a room.
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    let cancelled = false;
+    (async () => {
+      const restored = await bootstrap();
+      if (cancelled) return;
+      if (!restored) loadInitialData();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrap, loadInitialData]);
+
+  useEffect(() => {
+    hydratePitlaneDisplay();
+  }, [hydratePitlaneDisplay]);
+
+  // Watch the linked heat so pits can be auto-tagged with the current lap.
+  useEffect(() => useLinkedHeatStore.getState().attachWatch(), []);
 
   const handleKartClick = useCallback(
     (kart: string, opts?: { inPitlane?: { laneIndex: number }; teamStartKart?: string }) => {
@@ -78,7 +106,11 @@ export default function MobileMode() {
   const handlePitlaneClick = useCallback(
     (laneIndex: number) => {
       if (!selectedTeam) return;
-      const success = addEvent("pit", selectedTeam, laneIndex, -1);
+      // Auto-link the pit to the team's current (in-progress) lap from the linked
+      // heat — same lap the main page pre-selects in AddEventModal (latest + 1).
+      const latest = useLinkedHeatStore.getState().latestByKart.get(selectedTeam);
+      const lapNumber = latest ? latest.lapCount + 1 : undefined;
+      const success = addEvent("pit", selectedTeam, laneIndex, -1, undefined, undefined, lapNumber);
       if (success) {
         setSelectedTeam(null);
       }
@@ -184,8 +216,14 @@ export default function MobileMode() {
   const pitlanesCount = raceData.pitlanesCount;
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
 
+  // Pit display prefs (shared with the main page): exit side flips kart order +
+  // arrow, lane order can be reversed bottom-up.
+  const isExitRight = exitDirection === "right";
+  const laneIndices = Array.from({ length: pitlanesCount }, (_, i) => i);
+  if (order === "bottom-up") laneIndices.reverse();
+
   return (
-    <div className="min-h-[100dvh] max-h-[100dvh] bg-black text-white flex flex-col overflow-hidden select-none" onClick={() => setSelectedTeam(null)}>
+    <div className="min-h-[100dvh] bg-black text-white flex flex-col select-none" onClick={() => setSelectedTeam(null)}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 h-10 bg-black/50 border-b border-white/10 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -204,6 +242,33 @@ export default function MobileMode() {
           {undoHistory.length > 0 && lastEvent ? `ОТМЕНА ${lastEvent.kart}` : "ОТМЕНА"}
         </button>
       </div>
+
+      {/* Room control strip — who's editing + take control */}
+      {currentRoomId && currentRoom && (
+        <div
+          className="flex-shrink-0 flex items-center gap-2 px-3 h-8 bg-orange-950/40 border-b border-orange-500/20 text-xs"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {isOwner ? (
+            <span className="text-green-300 font-bold truncate">✏ Вы управляете{nickname ? ` · ${nickname}` : ""}</span>
+          ) : (
+            <span className="text-gray-300 truncate">
+              👁 Управляет: <span className="text-orange-200 font-bold">{ownerLabel}</span>
+            </span>
+          )}
+          {saveStatus === "retrying" && <span className="text-yellow-400 flex-shrink-0">· Сохр…</span>}
+          {saveStatus === "offline" && <span className="text-red-400 flex-shrink-0">· Оффлайн</span>}
+          <div className="flex-1" />
+          {!isOwner && (
+            <button
+              onClick={() => takeControl()}
+              className="px-2 py-0.5 rounded bg-orange-600 hover:bg-orange-500 text-white text-[11px] font-bold flex-shrink-0"
+            >
+              Взять управление
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Instruction bar — always rendered to avoid layout shift */}
       <div className="flex-shrink-0 px-3 pt-2">
@@ -234,8 +299,72 @@ export default function MobileMode() {
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Питлейны</h2>
         </div>
         <div className="space-y-1.5">
-          {Array.from({ length: pitlanesCount }, (_, laneIndex) => {
+          {laneIndices.map((laneIndex) => {
             const lane = pitlane[laneIndex] || [];
+            // First on exit is rendered on the exit side; flip kart order when exit is right.
+            const displayKarts = isExitRight ? [...lane].reverse() : lane;
+
+            const labelNode = (
+              <div className="flex items-center gap-1 min-w-[28px] flex-shrink-0">
+                {isExitRight ? (
+                  <>
+                    <span className="text-gray-500 text-xs">&#8594;</span>
+                    <span className="text-yellow-400 font-bold text-sm">{Utils.getLaneLetter(laneIndex)}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-yellow-400 font-bold text-sm">{Utils.getLaneLetter(laneIndex)}</span>
+                    <span className="text-gray-500 text-xs">&#8592;</span>
+                  </>
+                )}
+              </div>
+            );
+
+            const kartsNode = (
+              <div className="flex items-center gap-1 flex-1 overflow-x-auto py-0.5">
+                {lane.length === 0 ? (
+                  <span className="text-gray-600 text-xs italic">пусто</span>
+                ) : (
+                  displayKarts.map((kartNumber, kartIdx) => {
+                    const colorBg = getKartColorBg(kartNumber, kartColors);
+                    const isWhite = isWhiteKart(kartNumber, kartColors);
+
+                    return (
+                      <div
+                        key={`${kartNumber}-${kartIdx}`}
+                        className="relative flex-shrink-0 flex flex-col items-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleKartClick(kartNumber, { inPitlane: { laneIndex } });
+                        }}
+                      >
+                        <div
+                          className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${colorBg} ${
+                            isWhite ? "text-black" : "text-white"
+                          } shadow-md active:scale-90 transition-transform`}
+                        >
+                          {kartNumber.padStart(2, "0")}
+                        </div>
+                        <KartDelta kart={kartNumber} />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            );
+
+            const addNode = (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setNewKartNumber(String(nextNewKart));
+                  setAddKartModal({ laneIndex });
+                }}
+                className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-gray-400 text-lg flex-shrink-0 active:scale-90 transition-transform"
+              >
+                +
+              </button>
+            );
 
             return (
               <div
@@ -246,52 +375,19 @@ export default function MobileMode() {
                 }`}
               >
                 <div className="flex items-center gap-1.5">
-                  <div className="flex items-center gap-1 min-w-[28px] flex-shrink-0">
-                    <span className="text-yellow-400 font-bold text-sm">{Utils.getLaneLetter(laneIndex)}</span>
-                    <span className="text-gray-500 text-xs">&#8592;</span>
-                  </div>
-
-                  <div className="flex items-center gap-1 flex-1 overflow-x-auto py-0.5">
-                    {lane.length === 0 ? (
-                      <span className="text-gray-600 text-xs italic">пусто</span>
-                    ) : (
-                      lane.map((kartNumber, kartIdx) => {
-                        const colorBg = getKartColorBg(kartNumber, kartColors);
-                        const isWhite = isWhiteKart(kartNumber, kartColors);
-
-                        return (
-                          <div
-                            key={`${kartNumber}-${kartIdx}`}
-                            className="relative flex-shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleKartClick(kartNumber, { inPitlane: { laneIndex } });
-                            }}
-                          >
-                            <div
-                              className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${colorBg} ${
-                                isWhite ? "text-black" : "text-white"
-                              } shadow-md active:scale-90 transition-transform`}
-                            >
-                              {kartNumber.padStart(2, "0")}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {/* Add kart button */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setNewKartNumber(String(nextNewKart));
-                      setAddKartModal({ laneIndex });
-                    }}
-                    className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-gray-400 text-lg flex-shrink-0 active:scale-90 transition-transform"
-                  >
-                    +
-                  </button>
+                  {isExitRight ? (
+                    <>
+                      {addNode}
+                      {kartsNode}
+                      {labelNode}
+                    </>
+                  ) : (
+                    <>
+                      {labelNode}
+                      {kartsNode}
+                      {addNode}
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -300,7 +396,7 @@ export default function MobileMode() {
       </div>
 
       {/* Team karts grid */}
-      <div className="flex-1 px-3 pt-3 pb-3 overflow-y-auto min-h-0">
+      <div className="flex-1 px-3 pt-3 pb-3">
         <div className="flex items-center justify-between mb-1.5">
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Карты в гонке</h2>
           <span className="text-xs text-gray-600">{teamsArray.length} команд</span>
@@ -320,7 +416,7 @@ export default function MobileMode() {
                 onClick={(e) => { e.stopPropagation(); handleKartClick(currentKart, { teamStartKart: team.startKart }); }}
               >
                 <div
-                  className={`${colorBg} rounded-lg p-1.5 h-[72px] flex flex-col items-center justify-center shadow-md relative ${
+                  className={`${colorBg} rounded-lg p-1.5 min-h-[84px] flex flex-col items-center justify-center shadow-md relative ${
                     isSelected ? "ring-2 ring-white" : ""
                   }`}
                 >
@@ -328,7 +424,7 @@ export default function MobileMode() {
                   <div className={`text-[9px] leading-tight mt-0.5 truncate w-full text-center ${isWhite ? "text-black/70" : "text-white/70"}`}>
                     {team.name}
                   </div>
-                  <div className={`text-[9px] leading-tight ${isWhite ? "text-black/50" : "text-white/50"}`}>пит: {pitCount}</div>
+                  <KartCardStats startKart={team.startKart} currentKart={currentKart} pitCount={pitCount} isWhite={isWhite} />
 
                   {currentKart !== team.startKart && (
                     <div
@@ -348,12 +444,12 @@ export default function MobileMode() {
 
       {/* Events history */}
       {events.length > 0 && (
-        <div className="flex-shrink-0 px-3 pb-2">
+        <div className="flex-shrink-0 px-3 pt-4 pb-2">
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider">История</h2>
             <span className="text-xs text-gray-600">{events.length}</span>
           </div>
-          <div className="bg-gray-900/50 rounded-lg overflow-hidden max-h-32 overflow-y-auto">
+          <div className="bg-gray-900/50 rounded-lg overflow-hidden">
             {events.slice().reverse().map((event, revIdx) => {
               const realIdx = events.length - 1 - revIdx;
               const laneLabel = Utils.getLaneLetter(event.lane);
@@ -372,7 +468,17 @@ export default function MobileMode() {
                   <div className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold ${colorBg} ${isWhite ? "text-black" : "text-white"}`}>
                     {event.kart.padStart(2, "0")}
                   </div>
-                  <span className="text-xs text-gray-300 flex-1 truncate">{label}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-300">{label}</span>
+                      {typeof event.lapNumber === "number" && (
+                        <span className="text-[10px] font-mono text-cyan-300 flex-shrink-0">🔗 Круг {event.lapNumber}</span>
+                      )}
+                    </div>
+                    {event.team?.name && (
+                      <div className="text-[10px] text-gray-500 truncate">{event.team.name}</div>
+                    )}
+                  </div>
                   {raceTime && <span className="text-[10px] font-mono text-green-500 flex-shrink-0">{raceTime}</span>}
                   <button
                     onClick={(e) => { e.stopPropagation(); deleteEvent(realIdx); }}
@@ -507,6 +613,9 @@ function KartActionModal({
           </div>
         </div>
 
+        {/* Stint history on this kart */}
+        <KartStintHistory kart={state.kart} />
+
         {/* Color selection */}
         <div className="mb-4">
           <h4 className="text-sm font-bold text-gray-300 mb-2">Цвет</h4>
@@ -599,6 +708,165 @@ function ModalOverlay({ onClose, children }: { onClose: () => void; children: Re
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>{children}</div>
+    </div>
+  );
+}
+
+function deltaColorClass(deltaMs: number): string {
+  if (deltaMs < 300) return "text-emerald-400";
+  if (deltaMs < 800) return "text-lime-400";
+  if (deltaMs < 1500) return "text-amber-400";
+  if (deltaMs < 3000) return "text-orange-400";
+  return "text-red-500";
+}
+
+function formatLapTime(ms: number): string {
+  const totalSec = ms / 1000;
+  const min = Math.floor(totalSec / 60);
+  const sec = (totalSec % 60).toFixed(3);
+  return min > 0 ? `${min}:${sec.padStart(6, "0")}` : sec;
+}
+
+// Compact stint history for one physical kart: every team stint that drove it,
+// newest first, with laps/avg/best from the linked heat.
+function KartStintHistory({ kart }: { kart: string }) {
+  const heat = useLinkedHeatStore((s) => s.heat);
+  const lapsByKart = useLinkedHeatStore((s) => s.lapsByKart);
+  const teams = useRaceStore((s) => s.teams);
+  const events = useRaceStore((s) => s.events);
+  const settings = useRaceStore((s) => s.raceData?.settings);
+
+  const entries = useMemo(
+    () => (teams && events ? getTeamsOnKart(teams, events, kart) : []),
+    [teams, events, kart],
+  );
+
+  if (!heat || entries.length === 0) return null;
+
+  return (
+    <div className="mb-4">
+      <h4 className="text-sm font-bold text-gray-300 mb-2 flex items-center gap-2">
+        История стинтов
+        <span className="text-[10px] font-normal text-cyan-300 truncate">🔗 {heat.name}</span>
+      </h4>
+      <div className="space-y-1 max-h-40 overflow-y-auto">
+        {entries.map((e) => {
+          const stats = events
+            ? computeStintStats(e.startKart, e.stintNumber, events, lapsByKart.get(e.startKart), settings)
+            : null;
+          return (
+            <div
+              key={`${e.startKart}-${e.stintNumber}`}
+              className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-gray-900/60 text-[11px]"
+            >
+              <div className="min-w-0 flex items-center gap-1.5">
+                <span className="text-yellow-300 font-bold flex-shrink-0">#{e.startKart.padStart(2, "0")}</span>
+                <span className="text-gray-300 truncate min-w-0">{e.name}</span>
+                <span className="text-purple-400 flex-shrink-0">S{e.stintNumber}</span>
+                {e.isCurrent && <span className="text-green-400 flex-shrink-0">•сейчас</span>}
+              </div>
+              <div className="font-mono text-[10px] flex-shrink-0">
+                {stats?.kind === "ok" ? (
+                  <span className="text-gray-400">
+                    {stats.count}кр · <span className="text-white">{stats.avg !== null ? formatLapTime(stats.avg) : "—"}</span>{" "}
+                    · <span className="text-green-400">{formatLapTime(stats.best)}</span>
+                  </span>
+                ) : stats?.kind === "missing-lap-numbers" ? (
+                  <span className="text-gray-600">нет кругов</span>
+                ) : (
+                  <span className="text-gray-600">—</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// +X.XX gap of this physical kart's best lap to the global best — same metric the
+// main page shows under each kart. Rendered under pit-lane kart circles.
+function KartDelta({ kart }: { kart: string }) {
+  const heat = useLinkedHeatStore((s) => s.heat);
+  const { kartBest, globalBest } = useKartBests(kart);
+  if (!heat || kartBest === null || globalBest === null) return null;
+  const delta = Math.max(0, kartBest - globalBest);
+  const cls = delta === 0 ? "text-violet-400" : deltaColorClass(delta);
+  return (
+    <span className={`mt-0.5 text-[8px] leading-none font-mono font-bold ${cls}`}>
+      +{(delta / 1000).toFixed(2)}
+    </span>
+  );
+}
+
+// Per-card linked-heat stats: stint count, laps in current stint / total, and the
+// +X.XX gap of this physical kart's best lap to the global best — same metric the
+// main page shows under each kart (KartDeltaByPhysical).
+function KartCardStats({
+  startKart,
+  currentKart,
+  pitCount,
+  isWhite,
+}: {
+  startKart: string;
+  currentKart: string;
+  pitCount: number;
+  isWhite: boolean;
+}) {
+  const heat = useLinkedHeatStore((s) => s.heat);
+  const latest = useLinkedHeatStore((s) => s.latestByKart.get(startKart));
+  const events = useRaceStore((s) => s.events);
+  const { kartBest, globalBest } = useKartBests(currentKart);
+
+  const muted = isWhite ? "text-black/50" : "text-white/50";
+  const sub = isWhite ? "text-black/70" : "text-white/70";
+
+  // No linked heat or no laps yet — fall back to the plain pit count.
+  if (!heat || !latest) {
+    return <div className={`text-[9px] leading-tight ${muted}`}>пит: {pitCount}</div>;
+  }
+
+  const stintNumber = pitCount + 1;
+
+  // Laps in the current stint = laps since the last pit's linked lap number.
+  let lastPitLapNumber: number | undefined;
+  let hasPit = false;
+  if (events) {
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (e.type === "pit" && e.kart === startKart) {
+        hasPit = true;
+        lastPitLapNumber = e.lapNumber;
+        break;
+      }
+    }
+  }
+  const lapsInStint = !hasPit
+    ? latest.lapCount
+    : lastPitLapNumber === undefined
+      ? null
+      : Math.max(0, latest.lapCount - lastPitLapNumber);
+
+  const delta = kartBest !== null && globalBest !== null ? Math.max(0, kartBest - globalBest) : null;
+  const deltaClass = delta === 0 ? "text-violet-400" : delta !== null ? deltaColorClass(delta) : "";
+
+  return (
+    <div className="leading-tight text-center">
+      <div
+        className={`text-[9px] ${sub}`}
+        title={`Стинтов: ${stintNumber} · кругов в стинте: ${lapsInStint ?? "—"} · всего: ${latest.lapCount}`}
+      >
+        S{stintNumber} · {lapsInStint ?? "—"}/{latest.lapCount}
+      </div>
+      {delta !== null && (
+        <div
+          className={`text-[9px] font-mono font-bold leading-tight ${deltaClass}`}
+          title="Отставание лучшего круга этого карта от абсолютного беста"
+        >
+          +{(delta / 1000).toFixed(2)}
+        </div>
+      )}
     </div>
   );
 }

@@ -3,72 +3,13 @@ import Modal from "./Modal";
 import CloseIcon from "./icons/CloseIcon";
 import { useRaceStore } from "../store/useRaceStore";
 import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
-import { ParsedRaceEvent, RaceSettings } from "../types";
-import { LapItem } from "@/app/heats/types";
-import { buildLapFilterContext, computeExcludedLapCounts } from "../lapFilters";
+import { computeStintStats, getTeamsOnKart } from "../linked-heat/kartBests";
 
 function formatLapTime(ms: number): string {
   const totalSec = ms / 1000;
   const min = Math.floor(totalSec / 60);
   const sec = (totalSec % 60).toFixed(3);
   return min > 0 ? `${min}:${sec.padStart(6, "0")}` : sec;
-}
-
-function computeStintStats(
-  startKart: string,
-  stintNumber: number,
-  events: ParsedRaceEvent[],
-  linkedLapsForTeam: LapItem[] | undefined,
-  settings: RaceSettings | undefined,
-): StintStats {
-  if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
-
-  const teamPits = events.filter(
-    (e) => e.type === "pit" && e.team?.startKart === startKart,
-  );
-
-  let startLap = 1;
-  if (stintNumber > 1) {
-    const prevPit = teamPits.find((e) => e.pitCount === stintNumber - 1);
-    if (!prevPit || typeof prevPit.lapNumber !== "number") {
-      return { kind: "missing-lap-numbers" };
-    }
-    startLap = prevPit.lapNumber + 1;
-  }
-
-  let endLap = Infinity;
-  const currentPit = teamPits.find((e) => e.pitCount === stintNumber);
-  if (currentPit) {
-    if (typeof currentPit.lapNumber !== "number") {
-      return { kind: "missing-lap-numbers" };
-    }
-    endLap = currentPit.lapNumber;
-  }
-
-  const ctx = buildLapFilterContext(settings);
-  const excluded = computeExcludedLapCounts(linkedLapsForTeam, teamPits, ctx);
-  const laps = linkedLapsForTeam.filter(
-    (l) => l.lapCount >= startLap && l.lapCount <= endLap && !excluded.has(l.lapCount),
-  );
-  if (laps.length === 0) return { kind: "no-data" };
-
-  const maxLapTimeForAverageSec = settings?.maxLapTimeForAverageSec;
-  const maxMs =
-    typeof maxLapTimeForAverageSec === "number" && maxLapTimeForAverageSec > 0
-      ? maxLapTimeForAverageSec * 1000
-      : Infinity;
-  let sum = 0;
-  let avgCount = 0;
-  let best = Infinity;
-  for (const l of laps) {
-    if (l.time < best) best = l.time;
-    if (l.time <= maxMs) {
-      sum += l.time;
-      avgCount++;
-    }
-  }
-  const avg = avgCount > 0 ? sum / avgCount : null;
-  return { kind: "ok", count: laps.length, avg, avgCount, best };
 }
 
 // Цветовая карта с названиями
@@ -87,11 +28,6 @@ interface KartModalProps {
   kartNumber: string;
 }
 
-type StintStats =
-  | { kind: "ok"; count: number; avg: number | null; avgCount: number; best: number }
-  | { kind: "missing-lap-numbers" }
-  | { kind: "no-data" };
-
 export default function KartModal({ isOpen, onClose, kartNumber }: KartModalProps) {
   const { raceData, setKartColors, setKartComments, teams, events } = useRaceStore();
   const linkedHeat = useLinkedHeatStore((s) => s.heat);
@@ -106,146 +42,6 @@ export default function KartModal({ isOpen, onClose, kartNumber }: KartModalProp
   useEffect(() => {
     setComment(kartComments[kartNumber] || "");
   }, [kartNumber, kartComments]);
-
-  // Найти команды, которые ехали на этом карте с информацией о времени
-  const getTeamsOnKart = () => {
-    if (!teams || !events) return [];
-
-    interface TeamOnKart {
-      name: string;
-      startKart: string;
-      stintNumber: number;
-      timestamp?: number;
-      isCurrent: boolean;
-      isStarting: boolean;
-      timeAgo?: string;
-    }
-
-    const kartTeams: TeamOnKart[] = [];
-    
-    // Найти текущую команду на карте
-    let currentTeam: string | null = null;
-    Object.values(teams).forEach(team => {
-      if (team.karts[team.karts.length - 1] === kartNumber) {
-        currentTeam = team.name;
-      }
-    });
-
-    // Собрать все команды и их временные метки
-    Object.values(teams).forEach(team => {
-      if (team.karts.includes(kartNumber)) {
-        // Найти все индексы где команда была на этом карте
-        const kartIndices = team.karts
-          .map((kart, index) => kart === kartNumber ? index : -1)
-          .filter(index => index !== -1);
-        
-        const currentKartIndex = team.karts.length - 1;
-        const currentKart = team.karts[currentKartIndex];
-        
-        // Создаем отдельную запись для каждого раза, когда команда садилась на этот карт
-        kartIndices.forEach(kartIndex => {
-          const stintNumber = kartIndex + 1; // индекс + 1 = номер стинта команды
-          const isStarting = team.startKart === kartNumber && kartIndex === 0;
-          const isCurrent = currentKart === kartNumber && kartIndex === currentKartIndex;
-          
-          // Найти когда команда села на этот карт для этого конкретного стинта
-          let timestamp: number | undefined;
-          
-          if (!isStarting && kartIndex > 0) {
-            // Найти событие пит-стопа для этой команды с номером pitCount = kartIndex
-            const pitEvent = events.find(event => 
-              event.type === "pit" &&
-              event.team &&
-              event.team.startKart === team.startKart && 
-              event.pitCount === kartIndex
-            );
-            timestamp = pitEvent?.timestamp;
-            
-            // Если не нашли пит-стоп, возможно это breakdown событие
-            if (!timestamp) {
-              const breakdownEvent = events.find(event =>
-                event.type === "breakdown" &&
-                event.kart === team.startKart &&
-                event.newKart === kartNumber
-              );
-              timestamp = breakdownEvent?.timestamp;
-            }
-          }
-
-          // Вычислить "как давно"
-          let timeAgo: string | undefined;
-          if (timestamp) {
-            const now = Date.now();
-            const diffMs = now - timestamp;
-            const diffMins = Math.floor(diffMs / (1000 * 60));
-            const diffHours = Math.floor(diffMins / 60);
-            
-            if (diffHours > 0) {
-              timeAgo = `${diffHours}ч ${diffMins % 60}м назад`;
-            } else if (diffMins > 0) {
-              timeAgo = `${diffMins}м назад`;
-            } else {
-              timeAgo = "только что";
-            }
-          } else if (isStarting) {
-            // Для стартовых команд используем время самого раннего события в гонке
-            const eventsWithTime = events.filter(event => event.timestamp);
-            if (eventsWithTime.length > 0) {
-              const earliestTime = Math.min(...eventsWithTime.map(event => event.timestamp!));
-              const now = Date.now();
-              const diffMs = now - earliestTime;
-              const diffMins = Math.floor(diffMs / (1000 * 60));
-              const diffHours = Math.floor(diffMins / 60);
-              
-              if (diffHours > 0) {
-                timeAgo = `${diffHours}ч ${diffMins % 60}м назад`;
-              } else if (diffMins > 0) {
-                timeAgo = `${diffMins}м назад`;
-              } else {
-                timeAgo = "только что";
-              }
-            }
-          }
-
-          kartTeams.push({
-            name: team.name,
-            startKart: team.startKart,
-            stintNumber,
-            timestamp,
-            isCurrent,
-            isStarting,
-            timeAgo
-          });
-        });
-      }
-    });
-
-    // Сортировка: текущие записи первые, затем по времени (новые сверху), стартовые последние
-    return kartTeams.sort((a, b) => {
-      // Приоритет для текущих записей
-      if (a.isCurrent && !b.isCurrent) return -1;
-      if (!a.isCurrent && b.isCurrent) return 1;
-      
-      // Стартовые записи идут в конец
-      if (a.isStarting && !b.isStarting) return 1;
-      if (!a.isStarting && b.isStarting) return -1;
-      
-      // Сортировка по номеру стинта (новые стинты сверху)
-      if (a.startKart === b.startKart) {
-        return b.stintNumber - a.stintNumber;
-      }
-      
-      // Сортировка по timestamp (новые сверху)
-      if (a.timestamp && b.timestamp) {
-        return b.timestamp - a.timestamp;
-      }
-      if (a.timestamp && !b.timestamp) return -1;
-      if (!a.timestamp && b.timestamp) return 1;
-      
-      // Если все равно, сортируем по названию команды
-      return a.name.localeCompare(b.name);
-    });
-  };
 
   const handleColorChange = (colorIndex: number) => {
     const newColors = { ...kartColors };
@@ -264,7 +60,7 @@ export default function KartModal({ isOpen, onClose, kartNumber }: KartModalProp
     setKartComments(newComments);
   };
 
-  const teamsOnKart = getTeamsOnKart();
+  const teamsOnKart = teams && events ? getTeamsOnKart(teams, events, kartNumber) : [];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
