@@ -22,7 +22,7 @@ const REALTIME_POLL_MS = 1_000;
 const REALTIME_FORCE_RECONNECT_AFTER_MS = 10_000;
 
 const PROBE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-  ? `${process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/`
+  ? `${process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, '')}/auth/v1/health`
   : null;
 const PROBE_APIKEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
