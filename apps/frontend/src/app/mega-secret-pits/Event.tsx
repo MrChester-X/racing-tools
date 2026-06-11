@@ -9,6 +9,7 @@ import EditPitEventModal from "./components/EditPitEventModal";
 import PitlaneVisualization from "./components/PitlaneVisualization";
 import Kart from "./Kart";
 import { useRaceStore } from "./store/useRaceStore";
+import { usePitLapDelta } from "./linked-heat/usePitLapDelta";
 
 function EventTime({ timestamp }: { timestamp?: number }) {
   const { getRaceTimer } = useRaceStore();
@@ -27,6 +28,21 @@ interface EventProps {
   eventIndex: number;
   eventNumber: number;
   onKartClick?: (kartNumber: string) => void;
+}
+
+// "Под красный XX.XX секунд" — how much slower this pit's lap-with-pit was than the
+// fastest lap-with-pit in the whole race. The fastest pit lap is the baseline (0.00).
+function UnderRedBadge({ event }: { event: ParsedRaceEvent }) {
+  const delta = usePitLapDelta(event);
+  if (!delta) return null;
+  return (
+    <div
+      className="mt-1 inline-flex items-center gap-1 rounded-md bg-red-900/50 px-2 py-0.5 text-xs font-semibold text-red-100"
+      title={`Время круга с питом ${(delta.lapTimeMs / 1000).toFixed(2)}с · лучший круг с питом ${(delta.minLapTimeMs / 1000).toFixed(2)}с`}
+    >
+      🚩 Под красный {(delta.deltaMs / 1000).toFixed(2)} секунд
+    </div>
+  );
 }
 
 const Event = ({ event, eventIndex, eventNumber, onKartClick }: EventProps) => {
@@ -85,6 +101,7 @@ const Event = ({ event, eventIndex, eventNumber, onKartClick }: EventProps) => {
                 <span className="ml-1 text-cyan-200">• 🔗 Lap {event.lapNumber}</span>
               )}
             </div>
+            <UnderRedBadge event={event} />
           </div>
 
           {/* Kart change */}
