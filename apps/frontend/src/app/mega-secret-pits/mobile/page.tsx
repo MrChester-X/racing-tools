@@ -40,7 +40,7 @@ interface KartActionModalState {
 }
 
 export default function MobileMode() {
-  const { raceData, pitlane, teams, events, loadInitialData, addEvent, deleteEvent, undoLastAction, undoHistory, setKartColors, getRaceTimer } = useRaceStore();
+  const { raceData, pitlane, teams, events, loadInitialData, addEvent, deleteEvent, undoLastAction, undoHistory, setKartColors, setKartColor, getRaceTimer } = useRaceStore();
   const { bootstrap, currentRoomId, currentRoom, sessionId, nickname, saveStatus, takeControl } = useRoomStore();
   const exitDirection = usePitlaneDisplayStore((s) => s.exitDirection);
   const order = usePitlaneDisplayStore((s) => s.order);
@@ -136,11 +136,9 @@ export default function MobileMode() {
 
   const handleColorChange = useCallback(
     (kart: string, colorIndex: number) => {
-      const colors = { ...(raceData?.kartColors || {}) };
-      colors[kart] = colorIndex;
-      setKartColors(colors);
+      setKartColor(kart, colorIndex);
     },
-    [raceData, setKartColors],
+    [setKartColor],
   );
 
   const handleRemoveFromPitlane = useCallback(

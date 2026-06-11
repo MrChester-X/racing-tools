@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { ParsedRaceEvent, ParsedRaceTeam, RaceData, RaceTeam, RaceSettings, RaceTimer } from "@/app/mega-secret-pits/types";
 import { TestRaceData } from "@/app/mega-secret-pits/const/TestRaceData";
 import { useRoomStore } from "@/app/mega-secret-pits/rooms/useRoomStore";
+import * as roomApi from "@/app/mega-secret-pits/rooms/roomsClient";
 
 function isViewerLocked(): boolean {
   if (typeof window === "undefined") return false;
@@ -63,6 +64,7 @@ interface RaceStore {
   // Kart actions
   setFocusKart: (kart: string | null) => void;
   setKartColors: (colors: { [kart: string]: number }) => void;
+  setKartColor: (kart: string, colorIndex: number) => void;
   setKartComments: (comments: { [kart: string]: string }) => void;
 
   // Team actions
@@ -264,6 +266,35 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
       set({ raceData: updatedRaceData });
       get().saveRaceData();
     }
+  },
+
+  // Single-kart color change. Routes the write so that a viewer (no race control)
+  // can only ever touch kartColors — never the rest of the race document.
+  setKartColor: (kart: string, colorIndex: number) => {
+    if (typeof window === "undefined") return;
+    const { raceData } = get();
+    if (!raceData) return;
+
+    const { currentRoomId, currentRoom, sessionId } = useRoomStore.getState();
+    const isOwner = !currentRoomId || currentRoom?.ownerSessionId === sessionId;
+
+    if (currentRoomId && !isOwner) {
+      // Viewer: only when the race owner allowed it.
+      if (!raceData.settings?.allowViewerKartColors) return;
+      // Optimistic local update; realtime echo will reconcile with server truth.
+      set({
+        raceData: { ...raceData, kartColors: { ...(raceData.kartColors || {}), [kart]: colorIndex } },
+      });
+      // Scoped, atomic server-side merge — cannot overwrite events/pitlane.
+      void roomApi.setRoomKartColor(currentRoomId, kart, colorIndex);
+      return;
+    }
+
+    // Owner or local (no room): normal local update + full persist / localStorage.
+    set({
+      raceData: { ...raceData, kartColors: { ...(raceData.kartColors || {}), [kart]: colorIndex } },
+    });
+    get().saveRaceData();
   },
 
   setKartComments: (comments: { [kart: string]: string }) => {

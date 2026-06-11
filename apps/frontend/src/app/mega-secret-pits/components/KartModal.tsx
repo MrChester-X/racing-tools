@@ -29,7 +29,7 @@ interface KartModalProps {
 }
 
 export default function KartModal({ isOpen, onClose, kartNumber }: KartModalProps) {
-  const { raceData, setKartColors, setKartComments, teams, events } = useRaceStore();
+  const { raceData, setKartColor, setKartComments, teams, events } = useRaceStore();
   const linkedHeat = useLinkedHeatStore((s) => s.heat);
   const lapsByKart = useLinkedHeatStore((s) => s.lapsByKart);
 
@@ -44,9 +44,7 @@ export default function KartModal({ isOpen, onClose, kartNumber }: KartModalProp
   }, [kartNumber, kartComments]);
 
   const handleColorChange = (colorIndex: number) => {
-    const newColors = { ...kartColors };
-    newColors[kartNumber] = colorIndex;
-    setKartColors(newColors);
+    setKartColor(kartNumber, colorIndex);
   };
 
   const handleCommentSave = () => {

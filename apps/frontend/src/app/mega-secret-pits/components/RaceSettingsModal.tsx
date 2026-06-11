@@ -44,6 +44,9 @@ export default function RaceSettingsModal({
   const [excludeAfterMissingLap, setExcludeAfterMissingLap] = useState(
     !!currentSettings?.excludeAfterMissingLap,
   );
+  const [allowViewerKartColors, setAllowViewerKartColors] = useState(
+    !!currentSettings?.allowViewerKartColors,
+  );
 
   // Обработка анимации модалки
   useEffect(() => {
@@ -86,6 +89,7 @@ export default function RaceSettingsModal({
       setExcludeLapAfterLong(!!currentSettings.excludeLapAfterLong);
       setExcludeFirstLapAfterPit(!!currentSettings.excludeFirstLapAfterPit);
       setExcludeAfterMissingLap(!!currentSettings.excludeAfterMissingLap);
+      setAllowViewerKartColors(!!currentSettings.allowViewerKartColors);
     }
   }, [currentSettings]);
 
@@ -156,6 +160,7 @@ export default function RaceSettingsModal({
       excludeLapAfterLong: excludeLapAfterLong || undefined,
       excludeFirstLapAfterPit: excludeFirstLapAfterPit || undefined,
       excludeAfterMissingLap: excludeAfterMissingLap || undefined,
+      allowViewerKartColors: allowViewerKartColors || undefined,
     };
 
     onSave(settings);
@@ -360,6 +365,25 @@ export default function RaceSettingsModal({
             </div>
             <div className="text-xs text-gray-400 mt-0.5">
               Если предыдущего круга (lapCount − 1) нет в данных — текущий не учитывается. Также исключает самый первый круг карта.
+            </div>
+          </label>
+        </div>
+
+        {/* Чекбокс: разрешить зрителям менять цвета картам */}
+        <div className="flex items-start gap-3">
+          <input
+            id="allowViewerKartColors"
+            type="checkbox"
+            checked={allowViewerKartColors}
+            onChange={(e) => setAllowViewerKartColors(e.target.checked)}
+            className="mt-1 w-4 h-4 accent-orange-500 cursor-pointer"
+          />
+          <label htmlFor="allowViewerKartColors" className="flex-1 cursor-pointer">
+            <div className="text-sm font-medium text-gray-200">
+              Разрешить зрителям менять цвета картам
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              Зрители без управления гонкой смогут менять цвет (состояние) картов. Правки идут точечно и не затрагивают питы и другие данные.
             </div>
           </label>
         </div>

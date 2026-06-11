@@ -43,6 +43,7 @@ export interface RaceSettings {
   excludeLapAfterLong?: boolean; // Если включено: круг N+1 не учитывается ни в одной статистике, если круг N был дольше maxLapTimeForAverageSec
   excludeFirstLapAfterPit?: boolean; // Если включено: первый круг после пит-ивента (pit.lapNumber + 1) не учитывается ни в одной статистике
   excludeAfterMissingLap?: boolean; // Если включено: если предыдущий круг отсутствует (нет в данных), текущий не учитывается
+  allowViewerKartColors?: boolean; // Если включено: зрители (без управления гонкой) могут менять цвета картам
 }
 
 export interface RaceTimer {

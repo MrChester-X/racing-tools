@@ -49,6 +49,20 @@ export async function persistRoomData(id: string, data: unknown): Promise<void> 
   if (error) throw error;
 }
 
+/**
+ * Set a single kart's color via an atomic server-side jsonb merge — touches ONLY
+ * data.kartColors.<kart>, so a viewer's color edit can never overwrite the
+ * owner's events/pitlane from a stale snapshot.
+ */
+export async function setRoomKartColor(id: string, kart: string, color: number): Promise<void> {
+  const { error } = await supabase.rpc('pitroom_set_kart_color', {
+    room_id: id,
+    kart,
+    color,
+  });
+  if (error) throw error;
+}
+
 export async function claimOwnership(id: string, sessionId: string, nickname: string): Promise<void> {
   const { error } = await supabase
     .from('pit_rooms')
