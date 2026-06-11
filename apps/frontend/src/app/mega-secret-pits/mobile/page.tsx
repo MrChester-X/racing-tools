@@ -7,6 +7,8 @@ import { usePitlaneDisplayStore } from "../store/usePitlaneDisplayStore";
 import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
 import { useKartBests, computeStintStats, getTeamsOnKart } from "../linked-heat/kartBests";
 import { useInProgressLap, formatInProgressElapsed } from "../linked-heat/useInProgressLap";
+import { getTrack, TRACK_LIST } from "../track/trackDefs";
+import { TrackMap } from "../track/TrackMap";
 import { ParsedRaceTeam } from "../types";
 import { Utils } from "../../../utils/Utils";
 import RaceTimer from "../components/RaceTimer";
@@ -43,8 +45,10 @@ export default function MobileMode() {
   const exitDirection = usePitlaneDisplayStore((s) => s.exitDirection);
   const order = usePitlaneDisplayStore((s) => s.order);
   const hydratePitlaneDisplay = usePitlaneDisplayStore((s) => s.hydrate);
-
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [showTrackMap, setShowTrackMap] = useState(false);
+  const [trackId, setTrackId] = useState<string>(TRACK_LIST[0]?.id ?? "");
+  const track = getTrack(trackId);
   const [kartActionModal, setKartActionModal] = useState<KartActionModalState | null>(null);
   const [addKartModal, setAddKartModal] = useState<{ laneIndex: number } | null>(null);
   const [newKartNumber, setNewKartNumber] = useState("");
@@ -76,6 +80,17 @@ export default function MobileMode() {
 
   // Watch the linked heat so pits can be auto-tagged with the current lap.
   useEffect(() => useLinkedHeatStore.getState().attachWatch(), []);
+
+  // Restore the manually picked track.
+  useEffect(() => {
+    const saved = localStorage.getItem("mobileTrackId");
+    if (saved && getTrack(saved)) setTrackId(saved);
+  }, []);
+
+  const selectTrack = useCallback((id: string) => {
+    setTrackId(id);
+    localStorage.setItem("mobileTrackId", id);
+  }, []);
 
   const handleKartClick = useCallback(
     (kart: string, opts?: { inPitlane?: { laneIndex: number }; teamStartKart?: string }) => {
@@ -231,6 +246,17 @@ export default function MobileMode() {
           <a href="/mega-secret-pits" className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-bold">
             ВЫХОД
           </a>
+          {TRACK_LIST.length > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowTrackMap((v) => !v); }}
+              className={`px-2 py-1 rounded text-xs font-bold ${
+                showTrackMap ? "bg-cyan-600 hover:bg-cyan-500" : "bg-gray-700 hover:bg-gray-600"
+              }`}
+              title="Карта трассы"
+            >
+              🏁
+            </button>
+          )}
         </div>
         <RaceTimer compact />
         <button
@@ -268,6 +294,38 @@ export default function MobileMode() {
               Взять управление
             </button>
           )}
+        </div>
+      )}
+
+      {/* Track map — collapsible, manual track pick, karts by estimated lap progress */}
+      {showTrackMap && (
+        <div
+          className="flex-shrink-0 h-[36vh] flex flex-col border-b border-white/10 bg-[#0b0e14]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {TRACK_LIST.length > 0 && (
+            <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 overflow-x-auto border-b border-white/5">
+              <span className="text-[10px] text-gray-500 flex-shrink-0 mr-1">Трасса:</span>
+              {TRACK_LIST.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => selectTrack(t.id)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold whitespace-nowrap flex-shrink-0 ${
+                    t.id === trackId ? "bg-cyan-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex-1 min-h-0">
+            {track ? (
+              <TrackMap track={track} teams={teamsArray} />
+            ) : (
+              <div className="h-full flex items-center justify-center text-gray-600 text-xs">Трасса не выбрана</div>
+            )}
+          </div>
         </div>
       )}
 
