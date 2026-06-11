@@ -357,14 +357,14 @@ export default function MobileMode() {
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Питлейны</h2>
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-3">
           {laneIndices.map((laneIndex) => {
             const lane = pitlane[laneIndex] || [];
             // First on exit is rendered on the exit side; flip kart order when exit is right.
             const displayKarts = isExitRight ? [...lane].reverse() : lane;
 
             const labelNode = (
-              <div className="flex items-center gap-1 min-w-[28px] flex-shrink-0">
+              <div className={`flex items-center gap-1 min-w-[28px] flex-shrink-0 ${isExitRight ? "ml-2" : ""}`}>
                 {isExitRight ? (
                   <>
                     <span className="text-gray-500 text-xs">&#8594;</span>
@@ -409,6 +409,8 @@ export default function MobileMode() {
                     );
                   })
                 )}
+                {/* Exit-right: keep the arrow+letter glued to the karts, empty space goes to the far right. */}
+                {isExitRight && labelNode}
               </div>
             );
 
@@ -438,7 +440,6 @@ export default function MobileMode() {
                     <>
                       {addNode}
                       {kartsNode}
-                      {labelNode}
                     </>
                   ) : (
                     <>
