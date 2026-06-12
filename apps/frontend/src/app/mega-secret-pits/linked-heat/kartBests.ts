@@ -191,7 +191,7 @@ export function computeBestByPhysicalKart(
   teams: Record<string, ParsedRaceTeam>,
   events: ParsedRaceEvent[],
   lapsByKart: Map<string, LapItem[]>,
-  lapKartIsTeamId: boolean = false,
+  lapKartIsTeamId = false,
   ctx: LapFilterContext = {
     minLapMs: 0,
     excludeAfterLongMs: undefined,
@@ -234,41 +234,46 @@ export function computeBestByPhysicalKart(
     }
   }
 
-  // Phase 2: stint-range mapping. Required for racemann/getraceresults
-  // (lap.kart = team id, never changes; only pit-event lapNumbers can split
-  // stints across the team's physical karts). Harmless for sms-timing — same
-  // laps re-applied, setBest is a no-op when value isn't smaller.
-  for (const team of Object.values(teams)) {
-    const teamLaps = lapsByKart.get(team.startKart);
-    if (!teamLaps || teamLaps.length === 0) continue;
-    const teamPits = events.filter(
-      (e) => e.type === "pit" && e.team?.startKart === team.startKart,
-    );
-    const excluded = computeExcludedLapCounts(teamLaps, teamPits, ctx);
-    team.karts.forEach((physicalKart, stintIndex) => {
-      const range = computeStintLapRange(teamPits, stintIndex);
-      if (!range) return;
-      for (const lap of teamLaps) {
-        if (excluded.has(lap.lapCount)) continue;
-        if (lap.lapCount >= range.startLap && lap.lapCount <= range.endLap) {
-          setBest(physicalKart, lap.time);
+  // Phase 2: stint-range mapping. ONLY for team-id timing (racemann/getraceresults),
+  // where lap.kart is the team id and `lapsByKart.get(startKart)` returns that
+  // team's own laps — split into stints by pit lapNumbers and attributed to the
+  // physical kart driven in each stint.
+  //
+  // Must NOT run for sms-timing: there `lapsByKart.get(startKart)` is the PHYSICAL
+  // kart #startKart's laps (driven by every team that used it across the race), so
+  // attributing its later laps to this team's stints 2+ leaks one kart's lap onto
+  // another and corrupts the per-kart best. Phase 1 already attributes correctly.
+  if (lapKartIsTeamId) {
+    for (const team of Object.values(teams)) {
+      const teamLaps = lapsByKart.get(team.startKart);
+      if (!teamLaps || teamLaps.length === 0) continue;
+      const teamPits = events.filter(
+        (e) => e.type === "pit" && e.team?.startKart === team.startKart,
+      );
+      const excluded = computeExcludedLapCounts(teamLaps, teamPits, ctx);
+      team.karts.forEach((physicalKart, stintIndex) => {
+        const range = computeStintLapRange(teamPits, stintIndex);
+        if (!range) return;
+        for (const lap of teamLaps) {
+          if (excluded.has(lap.lapCount)) continue;
+          if (lap.lapCount >= range.startLap && lap.lapCount <= range.endLap) {
+            setBest(physicalKart, lap.time);
+          }
         }
-      }
-    });
+      });
+    }
   }
 
   return map;
 }
 
-// Timing systems where `lap.kart` is the TEAM identifier (constant across the
-// race), not the physical kart number. For these, the physical kart driven in
-// each stint must be derived from the team's pit history, not from `lap.kart`.
-const TEAM_ID_KARTODROM_IDS = new Set<string>(["igora-karting"]);
-
-function lapKartIsTeamIdHeat(kartodromId: string | undefined | null): boolean {
-  if (typeof kartodromId !== "string") return false;
-  if (kartodromId.startsWith("racemann-")) return true;
-  return TEAM_ID_KARTODROM_IDS.has(kartodromId);
+// In EVERY timing system we ingest, `lap.kart` is the TEAM identifier (constant
+// across the race), never the physical kart number. The physical kart driven in
+// each stint is always derived from the team's pit history (Phase 2). Direct
+// attribution by `lap.kart` (Phase 1) would treat a team id as a kart number and
+// must never run.
+function lapKartIsTeamIdHeat(): boolean {
+  return true;
 }
 
 // Module-level memoization: every <Kart /> instance calls useKartBests, and
@@ -341,7 +346,7 @@ export function useKartBests(kart: string): KartBestsResult {
     if (!linkedHeat || !teams || !events || lapsByKart.size === 0) {
       return { map: null as Map<string, number> | null, globalBest: null as number | null };
     }
-    const lapKartIsTeamId = lapKartIsTeamIdHeat(linkedHeat.kartodromId);
+    const lapKartIsTeamId = lapKartIsTeamIdHeat();
     return getCachedBestByPhysicalKart(teams, events, lapsByKart, lapKartIsTeamId, ctx);
   }, [linkedHeat, teams, events, lapsByKart, ctx]);
 
@@ -407,7 +412,7 @@ export function useStintBest(teamStartKart: string, stintIndex: number): StintBe
   // globalBest re-uses the cached physical-kart map (same one as useKartBests).
   const globalBest = useMemo<number | null>(() => {
     if (!linkedHeat || !teams || !events || lapsByKart.size === 0) return null;
-    const lapKartIsTeamId = lapKartIsTeamIdHeat(linkedHeat.kartodromId);
+    const lapKartIsTeamId = lapKartIsTeamIdHeat();
     return getCachedBestByPhysicalKart(teams, events, lapsByKart, lapKartIsTeamId, ctx).globalBest;
   }, [linkedHeat, teams, events, lapsByKart, ctx]);
 
