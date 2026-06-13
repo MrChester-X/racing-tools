@@ -1,10 +1,10 @@
 "use client";
 import { useRaceStore } from "../store/useRaceStore";
-import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
-import { useInProgressLap } from "../linked-heat/useInProgressLap";
+import { useTrackProgress } from "../linked-heat/useTrackProgress";
+import { useFavoriteTeamsStore } from "../store/useFavoriteTeamsStore";
 import { ParsedRaceTeam } from "../types";
 import { TrackDef } from "./trackDefs";
-import { pointAtFraction } from "./trackGeometry";
+import { pointAtFraction, pointAtLength } from "./trackGeometry";
 
 // Kart-condition palette (parallel to the mobile KART_COLORS Tailwind classes),
 // as hex so it can fill SVG circles.
@@ -15,7 +15,82 @@ function conditionHex(kart: string, kartColors: Record<string, number>): { fill:
   return { fill: CONDITION_HEX[idx % CONDITION_HEX.length], dark: idx === 5 };
 }
 
+// Marker radius in track units; two markers closer than ~this overlap.
+const MARKER_R = 3.4;
+// Karts whose centres are within this distance count as "running together" and get
+// fanned apart so neither number hides the other.
+const CLUSTER_DIST = 2 * MARKER_R - 1.4;
+// Gap between fanned markers (slightly more than a diameter → a hair of breathing room).
+const FAN_SPACING = 2 * MARKER_R + 1;
+
+interface Placed {
+  team: ParsedRaceTeam;
+  frac: number;
+  x: number;
+  y: number;
+}
+
+// Resolve where each kart's marker is drawn. Karts running nose-to-tail are
+// collapsed onto their shared track point and fanned out perpendicular to the
+// track, so both numbers stay visible ("веером в сторону").
+function resolvePositions(
+  teams: ParsedRaceTeam[],
+  progress: Map<string, { progress: number; hasData: boolean }>,
+  track: TrackDef,
+): { team: ParsedRaceTeam; x: number; y: number }[] {
+  const cl = track.centerline;
+  const out: { team: ParsedRaceTeam; x: number; y: number }[] = [];
+  const base: Placed[] = [];
+  for (const team of teams) {
+    const pr = progress.get(team.startKart);
+    const frac = pr?.progress ?? 0;
+    const [x, y] = pointAtFraction(cl, frac, track.startOffset);
+    // Only live karts get fanned out; no-data karts just sit at the start line
+    // (as before) so the grid doesn't explode into a huge fan before the race.
+    if (pr?.hasData) base.push({ team, frac, x, y });
+    else out.push({ team, x, y });
+  }
+
+  // Walk markers in track order; start a new cluster whenever the next marker is
+  // far enough from the previous one to no longer overlap.
+  const sorted = [...base].sort((a, b) => a.frac - b.frac);
+  const clusters: Placed[][] = [];
+  for (const p of sorted) {
+    const last = clusters[clusters.length - 1];
+    const prev = last?.[last.length - 1];
+    if (prev && Math.hypot(p.x - prev.x, p.y - prev.y) <= CLUSTER_DIST) last.push(p);
+    else clusters.push([p]);
+  }
+
+  for (const cluster of clusters) {
+    if (cluster.length === 1) {
+      out.push({ team: cluster[0].team, x: cluster[0].x, y: cluster[0].y });
+      continue;
+    }
+    // Anchor the whole pack at its mean track point and splay along the local normal.
+    const meanFrac = cluster.reduce((s, p) => s + p.frac, 0) / cluster.length;
+    const d = track.startOffset + meanFrac * cl.total;
+    const eps = Math.max(0.5, cl.total * 0.003);
+    const [ax, ay] = pointAtLength(cl, d - eps);
+    const [bx, by] = pointAtLength(cl, d + eps);
+    const tlen = Math.hypot(bx - ax, by - ay) || 1;
+    const nx = -(by - ay) / tlen; // unit normal = rotate unit tangent 90°
+    const ny = (bx - ax) / tlen;
+    const [mx, my] = pointAtLength(cl, d);
+    // Leader (furthest into the lap) first, for a stable top-to-bottom order.
+    const ordered = [...cluster].sort((a, b) => b.frac - a.frac);
+    ordered.forEach((p, i) => {
+      const offset = (i - (ordered.length - 1) / 2) * FAN_SPACING;
+      out.push({ team: p.team, x: mx + nx * offset, y: my + ny * offset });
+    });
+  }
+  return out;
+}
+
 export function TrackMap({ track, teams }: { track: TrackDef; teams: ParsedRaceTeam[] }) {
+  const progress = useTrackProgress(teams.map((t) => t.startKart));
+  const placed = resolvePositions(teams, progress, track);
+
   return (
     <svg
       viewBox={track.viewBox}
@@ -23,15 +98,6 @@ export function TrackMap({ track, teams }: { track: TrackDef; teams: ParsedRaceT
       role="img"
       aria-label="Карта трассы и положение картов"
     >
-      <defs>
-        <filter id="kartGlow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
       <g transform={track.transform}>
         {/* Track surface — layered strokes per segment, same look as the source. */}
         {track.segments.map((seg, i) => (
@@ -67,45 +133,37 @@ export function TrackMap({ track, teams }: { track: TrackDef; teams: ParsedRaceT
           />
         </g>
 
-        {/* Kart markers */}
-        {teams.map((t) => (
-          <TrackMarker key={t.startKart} team={t} track={track} />
+        {/* Kart markers — positions already de-overlapped by resolvePositions. */}
+        {placed.map(({ team, x, y }) => (
+          <TrackMarker key={team.startKart} team={team} x={x} y={y} />
         ))}
       </g>
     </svg>
   );
 }
 
-function TrackMarker({ team, track }: { team: ParsedRaceTeam; track: TrackDef }) {
+function TrackMarker({ team, x, y }: { team: ParsedRaceTeam; x: number; y: number }) {
   const kartColors = useRaceStore((s) => s.raceData?.kartColors) ?? {};
-  const position = useLinkedHeatStore((s) => s.latestByKart.get(team.startKart)?.position);
-  const inProgress = useInProgressLap(team.startKart);
-
-  // Lap progress 0..1 from elapsed-since-last-crossing vs recent average. No data
-  // (not enough laps / no crossing yet) → park at the start-finish line.
-  const progress =
-    inProgress && inProgress.avgRecentMs && inProgress.avgRecentMs > 0
-      ? Math.min(1, Math.max(0, inProgress.elapsedMs / inProgress.avgRecentMs))
-      : 0;
-  const [x, y] = pointAtFraction(track.centerline, progress, track.startOffset);
+  const isFavorite = useFavoriteTeamsStore((s) => !!s.favorites[team.startKart]);
 
   const currentKart = team.karts[team.karts.length - 1];
   const { fill, dark } = conditionHex(currentKart, kartColors);
-  const isLeader = position === 1;
 
   return (
-    <g transform={`translate(${x} ${y})`} filter={isLeader ? "url(#kartGlow)" : undefined}>
+    <g transform={`translate(${x} ${y})`}>
       <title>
         Команда #{team.startKart} · карт #{currentKart}
         {team.name ? ` · ${team.name}` : ""}
       </title>
-      {isLeader && (
-        <circle r={6} fill="none" stroke={fill} strokeWidth={0.6} opacity={0.5}>
-          <animate attributeName="r" values="4;8;4" dur="2.4s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0.55;0.15;0.55" dur="2.4s" repeatCount="indefinite" />
+      {/* Favorite team — blinking amber halo so it's easy to spot. */}
+      {isFavorite && (
+        <circle r={5.2} fill="none" stroke="#fbbf24" strokeWidth={1}>
+          <animate attributeName="opacity" values="1;0.1;1" dur="0.9s" repeatCount="indefinite" />
         </circle>
       )}
-      <circle r={3.4} fill={fill} stroke="#0a0c10" strokeWidth={0.6} />
+      <circle r={MARKER_R} fill={fill} stroke={isFavorite ? "#fbbf24" : "#0a0c10"} strokeWidth={isFavorite ? 1 : 0.6}>
+        {isFavorite && <animate attributeName="opacity" values="1;0.35;1" dur="0.9s" repeatCount="indefinite" />}
+      </circle>
       <text
         x={0}
         y={1.4}

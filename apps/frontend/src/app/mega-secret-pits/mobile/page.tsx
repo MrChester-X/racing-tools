@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRaceStore } from "../store/useRaceStore";
 import { useRoomStore } from "../rooms/useRoomStore";
 import { usePitlaneDisplayStore } from "../store/usePitlaneDisplayStore";
+import { useFavoriteTeamsStore } from "../store/useFavoriteTeamsStore";
 import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
 import { useKartBests, computeStintStats, getTeamsOnKart } from "../linked-heat/kartBests";
 import { useInProgressLap, formatInProgressElapsed } from "../linked-heat/useInProgressLap";
@@ -45,6 +46,7 @@ export default function MobileMode() {
   const exitDirection = usePitlaneDisplayStore((s) => s.exitDirection);
   const order = usePitlaneDisplayStore((s) => s.order);
   const hydratePitlaneDisplay = usePitlaneDisplayStore((s) => s.hydrate);
+  const hydrateFavorites = useFavoriteTeamsStore((s) => s.hydrate);
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [showTrackMap, setShowTrackMap] = useState(false);
   const [trackId, setTrackId] = useState<string>(TRACK_LIST[0]?.id ?? "");
@@ -76,7 +78,8 @@ export default function MobileMode() {
 
   useEffect(() => {
     hydratePitlaneDisplay();
-  }, [hydratePitlaneDisplay]);
+    hydrateFavorites();
+  }, [hydratePitlaneDisplay, hydrateFavorites]);
 
   // Watch the linked heat so pits can be auto-tagged with the current lap.
   useEffect(() => useLinkedHeatStore.getState().attachWatch(), []);
@@ -673,6 +676,9 @@ function KartActionModal({
           </div>
         </div>
 
+        {/* Favorite team toggle — favorited teams blink on the track map */}
+        {state.teamStartKart && <FavoriteTeamToggle startKart={state.teamStartKart} />}
+
         {/* Stint history on this kart */}
         <KartStintHistory kart={state.kart} />
 
@@ -769,6 +775,35 @@ function ModalOverlay({ onClose, children }: { onClose: () => void; children: Re
     <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>{children}</div>
     </div>
+  );
+}
+
+// "Любимая команда" checkbox in the team modal — favorited teams blink on the
+// track map so they're easy to spot at a glance.
+function FavoriteTeamToggle({ startKart }: { startKart: string }) {
+  const isFavorite = useFavoriteTeamsStore((s) => !!s.favorites[startKart]);
+  const toggle = useFavoriteTeamsStore((s) => s.toggle);
+  return (
+    <button
+      onClick={() => toggle(startKart)}
+      className={`w-full mb-4 flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors ${
+        isFavorite
+          ? "bg-amber-500/15 border-amber-400/60 text-amber-200"
+          : "bg-gray-700/50 border-gray-600 text-gray-300 hover:bg-gray-700"
+      }`}
+    >
+      <span className="text-sm font-bold flex items-center gap-2">
+        <span className={isFavorite ? "" : "grayscale opacity-60"}>⭐</span>
+        Любимая команда
+      </span>
+      <span
+        className={`w-5 h-5 rounded flex items-center justify-center text-xs border ${
+          isFavorite ? "bg-amber-400 border-amber-400 text-black" : "border-gray-500 text-transparent"
+        }`}
+      >
+        ✓
+      </span>
+    </button>
   );
 }
 
