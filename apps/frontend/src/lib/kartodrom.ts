@@ -1,6 +1,7 @@
 const KARTODROM_LABELS: Record<string, string> = {
   'pitstop-premium': 'PitStop Premium',
   'pitstop-narvskaya': 'PitStop Narvskaya',
+  'racemann-pitstop': 'PitStop Narvskaya Racemann',
   'igora-karting': 'Igora Karting',
 };
 
