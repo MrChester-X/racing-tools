@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { mergeKartodromOptions } from '@/lib/kartodrom';
 import { HeatItem } from '../types';
 
 interface HeatsState {
@@ -66,11 +67,12 @@ export const useHeatsStore = create<HeatsState>((set, get) => ({
   loadKartodroms: async () => {
     const { data, error } = await supabase.from('heats').select('kartodromId');
     if (error) throw error;
-    const unique = Array.from(
+    const fromDb = Array.from(
       new Set((data ?? []).map((r: { kartodromId: string }) => r.kartodromId)),
-    ).sort();
+    );
+    const unique = mergeKartodromOptions(fromDb);
     const current = get().kartodromId;
-    const next = unique.length === 0 || unique.includes(current) ? current : unique[0];
+    const next = unique.includes(current) ? current : unique[0];
     set({ kartodromOptions: unique, kartodromId: next });
   },
 

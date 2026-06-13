@@ -1,13 +1,14 @@
 import { supabase } from '@/lib/supabase';
+import { mergeKartodromOptions } from '@/lib/kartodrom';
 import { HeatItem, LapItem } from '@/app/heats/types';
 
 export async function listKartodroms(): Promise<string[]> {
   const { data, error } = await supabase.from('heats').select('kartodromId');
   if (error) throw error;
-  const unique = Array.from(
+  const fromDb = Array.from(
     new Set((data ?? []).map((r: { kartodromId: string }) => r.kartodromId)),
-  ).sort();
-  return unique;
+  );
+  return mergeKartodromOptions(fromDb);
 }
 
 export async function listHeats(params: {
