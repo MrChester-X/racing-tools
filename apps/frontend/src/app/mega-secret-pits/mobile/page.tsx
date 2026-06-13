@@ -8,6 +8,7 @@ import { useFavoriteTeamsStore } from "../store/useFavoriteTeamsStore";
 import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
 import { useKartBests, computeStintStats, getTeamsOnKart } from "../linked-heat/kartBests";
 import { useInProgressLap, formatInProgressElapsed } from "../linked-heat/useInProgressLap";
+import { useStintAlarm } from "../linked-heat/useStintAlarm";
 import { getTrack, TRACK_LIST } from "../track/trackDefs";
 import { TrackMap } from "../track/TrackMap";
 import { ParsedRaceTeam } from "../types";
@@ -497,6 +498,7 @@ export default function MobileMode() {
                       {currentKart}
                     </div>
                   )}
+                  <StintAlarm startKart={team.startKart} />
                   <InProgressLapBar startKart={team.startKart} />
                 </div>
               </div>
@@ -899,6 +901,23 @@ function InProgressLapTime({ startKart, isWhite }: { startKart: string; isWhite:
     >
       {overrun ? "+" : "−"}
       {formatInProgressElapsed(Math.abs(remainingMs))}
+    </div>
+  );
+}
+
+// When the team's current stint reaches the configured limit (minutes or laps),
+// the whole card plaque blinks red with a big alarm icon. Off when no limit is set.
+function StintAlarm({ startKart }: { startKart: string }) {
+  const alarm = useStintAlarm(startKart);
+  if (!alarm) return null;
+  return (
+    <div
+      className="animate-stint-blink pointer-events-none absolute inset-0 z-20 rounded-lg border-2 border-b-0 border-red-500"
+      title="Стинт достиг лимита — пора на пит"
+    >
+      <span className="absolute top-0.5 left-0.5 text-[13px] leading-none drop-shadow-[0_0_3px_rgba(0,0,0,0.9)]">
+        🚨
+      </span>
     </div>
   );
 }

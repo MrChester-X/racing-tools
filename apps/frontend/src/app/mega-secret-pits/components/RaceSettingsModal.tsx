@@ -47,6 +47,14 @@ export default function RaceSettingsModal({
   const [allowViewerKartColors, setAllowViewerKartColors] = useState(
     !!currentSettings?.allowViewerKartColors,
   );
+  const [stintAlarmUnit, setStintAlarmUnit] = useState<"minutes" | "laps">(
+    currentSettings?.stintAlarmUnit ?? "minutes",
+  );
+  const [stintAlarmInput, setStintAlarmInput] = useState(
+    currentSettings?.stintAlarmThreshold != null
+      ? String(currentSettings.stintAlarmThreshold)
+      : "",
+  );
 
   // Обработка анимации модалки
   useEffect(() => {
@@ -90,6 +98,12 @@ export default function RaceSettingsModal({
       setExcludeFirstLapAfterPit(!!currentSettings.excludeFirstLapAfterPit);
       setExcludeAfterMissingLap(!!currentSettings.excludeAfterMissingLap);
       setAllowViewerKartColors(!!currentSettings.allowViewerKartColors);
+      setStintAlarmUnit(currentSettings.stintAlarmUnit ?? "minutes");
+      setStintAlarmInput(
+        currentSettings.stintAlarmThreshold != null
+          ? String(currentSettings.stintAlarmThreshold)
+          : "",
+      );
     }
   }, [currentSettings]);
 
@@ -148,6 +162,8 @@ export default function RaceSettingsModal({
   const handleSave = () => {
     const parsedMax = parseFloat(maxLapTimeInput.replace(",", "."));
     const parsedMin = parseFloat(minLapTimeInput.replace(",", "."));
+    const parsedStintAlarm = parseFloat(stintAlarmInput.replace(",", "."));
+    const stintAlarmOn = Number.isFinite(parsedStintAlarm) && parsedStintAlarm > 0;
     const settings: RaceSettings = {
       raceName: raceName.trim() || undefined,
       pitlanesCount,
@@ -161,6 +177,8 @@ export default function RaceSettingsModal({
       excludeFirstLapAfterPit: excludeFirstLapAfterPit || undefined,
       excludeAfterMissingLap: excludeAfterMissingLap || undefined,
       allowViewerKartColors: allowViewerKartColors || undefined,
+      stintAlarmUnit: stintAlarmOn ? stintAlarmUnit : undefined,
+      stintAlarmThreshold: stintAlarmOn ? parsedStintAlarm : undefined,
     };
 
     onSave(settings);
@@ -309,6 +327,48 @@ export default function RaceSettingsModal({
           />
           <div className="text-xs text-gray-400 mt-1">
             Круги короче этого значения не учитываются нигде: ни в бесте, ни в среднем, ни в статистике стинтов. Пусто = учитывать все круги.
+          </div>
+        </div>
+
+        {/* Аларм по длине стинта */}
+        <div>
+          <label className="block text-sm font-medium text-gray-200 mb-2">
+            Аларм по длине стинта
+            <span className="text-gray-500 font-normal"> — опционально</span>
+          </label>
+          <div className="flex gap-2">
+            <div className="inline-flex rounded-md border border-gray-600 overflow-hidden flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setStintAlarmUnit("minutes")}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  stintAlarmUnit === "minutes" ? "bg-orange-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                }`}
+              >
+                Минуты
+              </button>
+              <button
+                type="button"
+                onClick={() => setStintAlarmUnit("laps")}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  stintAlarmUnit === "laps" ? "bg-orange-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                }`}
+              >
+                Круги
+              </button>
+            </div>
+            <input
+              type="number"
+              min="0"
+              step={stintAlarmUnit === "minutes" ? "0.5" : "1"}
+              value={stintAlarmInput}
+              onChange={(e) => setStintAlarmInput(e.target.value)}
+              placeholder={stintAlarmUnit === "minutes" ? "например, 25" : "например, 20"}
+              className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            />
+          </div>
+          <div className="text-xs text-gray-400 mt-1">
+            Когда текущий стинт команды достигает лимита, у неё в мобильном режиме мигает иконка 🚨. В минутах считается сумма времён кругов стинта + текущий круг; в кругах — количество кругов в стинте. Пусто = выключено.
           </div>
         </div>
 
