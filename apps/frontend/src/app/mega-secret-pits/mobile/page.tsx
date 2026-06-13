@@ -909,10 +909,16 @@ function InProgressLapTime({ startKart, isWhite }: { startKart: string; isWhite:
 // the whole card plaque blinks red with a big alarm icon. Off when no limit is set.
 function StintAlarm({ startKart }: { startKart: string }) {
   const alarm = useStintAlarm(startKart);
+  // Anchor the blink to the wall clock (negative delay = phase from absolute time)
+  // so every alarm plaque blinks in unison, no matter when it started. Computed
+  // once and kept stable so the 100ms tick re-render doesn't restart the animation.
+  const blinkDelay = useRef<string | null>(null);
+  if (blinkDelay.current === null) blinkDelay.current = `-${Date.now() % 700}ms`;
   if (!alarm) return null;
   return (
     <div
       className="animate-stint-blink pointer-events-none absolute inset-0 z-20 rounded-lg border-2 border-b-0 border-red-500"
+      style={{ animationDelay: blinkDelay.current }}
       title="Стинт достиг лимита — пора на пит"
     >
       <span className="absolute top-0.5 left-0.5 text-[13px] leading-none drop-shadow-[0_0_3px_rgba(0,0,0,0.9)]">
