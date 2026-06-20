@@ -56,7 +56,6 @@ export default function MobileMode() {
   const [addKartModal, setAddKartModal] = useState<{ laneIndex: number } | null>(null);
   const [newKartNumber, setNewKartNumber] = useState("");
   const [replaceKartNumber, setReplaceKartNumber] = useState("");
-  const [nextNewKart, setNextNewKart] = useState(101);
 
   const lastClickRef = useRef<{ kart: string; time: number } | null>(null);
 
@@ -104,7 +103,7 @@ export default function MobileMode() {
       if (last && last.kart === kart && now - last.time < 400) {
         // Double click -> open modal
         lastClickRef.current = null;
-        setReplaceKartNumber(opts?.teamStartKart ? String(nextNewKart) : "");
+        setReplaceKartNumber(opts?.teamStartKart ? suggestedKartRef.current : "");
         setKartActionModal({
           kart,
           inPitlane: opts?.inPitlane,
@@ -175,6 +174,39 @@ export default function MobileMode() {
     [teams],
   );
 
+  // Every kart number that has appeared in the race at ANY point — across all team
+  // stints, the starting pitlane, and every add/replace event — plus the number we
+  // suggest for a brand-new kart: max ever used + 1, but never below 101.
+  const { usedKartNumbers, suggestedKart } = useMemo(() => {
+    const used = new Set<number>();
+    const add = (k?: string | null) => {
+      const n = parseInt(String(k ?? "").trim(), 10);
+      if (Number.isFinite(n)) used.add(n);
+    };
+    if (teams) for (const t of Object.values(teams)) t.karts.forEach(add);
+    raceData?.startPitlane?.forEach((lane) => lane.forEach(add));
+    events?.forEach((e) => {
+      add(e.kart);
+      add(e.newKart);
+    });
+    let max = 100; // → suggestion starts at 101
+    for (const n of used) if (n > max) max = n;
+    return { usedKartNumbers: used, suggestedKart: String(max + 1) };
+  }, [teams, raceData?.startPitlane, events]);
+
+  // Was this number ever in the race? (numeric-aware: "07" === "7")
+  const isKartUsedEver = useCallback(
+    (kartNumber: string) => {
+      const n = parseInt(kartNumber.trim(), 10);
+      return Number.isFinite(n) && usedKartNumbers.has(n);
+    },
+    [usedKartNumbers],
+  );
+
+  // handleKartClick is a stable ([]) callback, so read the latest suggestion via ref.
+  const suggestedKartRef = useRef(suggestedKart);
+  suggestedKartRef.current = suggestedKart;
+
   const handleReplaceKart = useCallback(() => {
     if (!kartActionModal?.teamStartKart || !replaceKartNumber.trim()) return;
     const newKart = replaceKartNumber.trim();
@@ -184,7 +216,6 @@ export default function MobileMode() {
     }
     addEvent("breakdown", kartActionModal.teamStartKart, 0, -1, undefined, newKart);
     setNewKartColor(newKart);
-    setNextNewKart((prev) => Math.max(prev, parseInt(newKart) || 0) + 1);
     setKartActionModal(null);
     setReplaceKartNumber("");
   }, [kartActionModal, replaceKartNumber, addEvent, setNewKartColor, isKartInUse]);
@@ -194,7 +225,6 @@ export default function MobileMode() {
     const kart = newKartNumber.trim();
     addEvent("add_kart", kart, addKartModal.laneIndex, -1);
     setNewKartColor(kart);
-    setNextNewKart((prev) => Math.max(prev, parseInt(kart) || 0) + 1);
     setAddKartModal(null);
     setNewKartNumber("");
   }, [addKartModal, newKartNumber, addEvent, setNewKartColor]);
@@ -420,7 +450,7 @@ export default function MobileMode() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setNewKartNumber(String(nextNewKart));
+                  setNewKartNumber(suggestedKart);
                   setAddKartModal({ laneIndex });
                 }}
                 className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-gray-400 text-lg flex-shrink-0 active:scale-90 transition-transform"
@@ -571,6 +601,7 @@ export default function MobileMode() {
           replaceKartNumber={replaceKartNumber}
           setReplaceKartNumber={setReplaceKartNumber}
           onReplaceKart={handleReplaceKart}
+          isKartUsedEver={isKartUsedEver}
           onClose={() => {
             setKartActionModal(null);
             setReplaceKartNumber("");
@@ -589,9 +620,16 @@ export default function MobileMode() {
               value={newKartNumber}
               onChange={(e) => setNewKartNumber(e.target.value)}
               placeholder="Номер карта"
-              className="w-full p-3 bg-gray-700 rounded-lg text-white text-center text-xl font-bold placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 mb-4"
+              className={`w-full p-3 bg-gray-700 rounded-lg text-white text-center text-xl font-bold placeholder-gray-500 focus:outline-none focus:ring-2 ${
+                isKartUsedEver(newKartNumber) ? "ring-2 ring-amber-500 focus:ring-amber-500" : "focus:ring-orange-500"
+              } mb-1`}
               autoFocus
             />
+            {isKartUsedEver(newKartNumber) ? (
+              <p className="text-amber-400 text-xs mb-4">⚠️ Карт #{newKartNumber.trim()} уже был в гонке</p>
+            ) : (
+              <div className="mb-4" />
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => {
@@ -630,6 +668,7 @@ function KartActionModal({
   replaceKartNumber,
   setReplaceKartNumber,
   onReplaceKart,
+  isKartUsedEver,
   onClose,
 }: {
   state: KartActionModalState;
@@ -642,6 +681,7 @@ function KartActionModal({
   replaceKartNumber: string;
   setReplaceKartNumber: (v: string) => void;
   onReplaceKart: () => void;
+  isKartUsedEver: (kartNumber: string) => boolean;
   onClose: () => void;
 }) {
   const currentColorIndex = kartColors[state.kart] ?? 5;
@@ -750,7 +790,9 @@ function KartActionModal({
                 value={replaceKartNumber}
                 onChange={(e) => setReplaceKartNumber(e.target.value)}
                 placeholder="Новый номер"
-                className="flex-1 p-2 bg-gray-700 rounded-lg text-white text-center font-bold placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className={`flex-1 p-2 bg-gray-700 rounded-lg text-white text-center font-bold placeholder-gray-500 focus:outline-none focus:ring-2 ${
+                  isKartUsedEver(replaceKartNumber) ? "ring-2 ring-amber-500 focus:ring-amber-500" : "focus:ring-purple-500"
+                }`}
               />
               <button
                 onClick={onReplaceKart}
@@ -760,6 +802,9 @@ function KartActionModal({
                 Заменить
               </button>
             </div>
+            {isKartUsedEver(replaceKartNumber) && (
+              <p className="text-amber-400 text-xs mt-1.5">⚠️ Карт #{replaceKartNumber.trim()} уже был в гонке</p>
+            )}
           </div>
         )}
 
