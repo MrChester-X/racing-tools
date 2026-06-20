@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useRaceStore } from "./store/useRaceStore";
 import { useLinkedHeatStore } from "./linked-heat/useLinkedHeatStore";
 import { useKartBests } from "./linked-heat/kartBests";
@@ -33,10 +34,13 @@ function KartDeltaByPhysical({ kart }: { kart: string }) {
 }
 
 const Kart = ({ kart, isGhost = false, onKartClick, teamStartKart, stintIndex }: KartProps) => {
-  const { focusKart, setFocusKart, raceData } = useRaceStore();
+  // Narrow selectors: this component only re-renders when ITS own focus state, the
+  // kart-colour map, or the linked heat changes — not on every lap (that re-renders
+  // only the tiny KartDeltaByPhysical child) or unrelated store mutation.
+  const isFocused = useRaceStore((s) => s.focusKart === kart);
+  const setFocusKart = useRaceStore((s) => s.setFocusKart);
+  const kartColors = useRaceStore((s) => s.raceData?.kartColors) ?? {};
   const linkedHeat = useLinkedHeatStore((s) => s.heat);
-
-  const kartColors = raceData?.kartColors || {};
 
   const handleClick = () => {
     if (onKartClick) {
@@ -58,7 +62,7 @@ const Kart = ({ kart, isGhost = false, onKartClick, teamStartKart, stintIndex }:
       onMouseEnter={() => setFocusKart(kart)}
       onMouseLeave={() => setFocusKart(null)}
       onClick={handleClick}
-      className={`flex justify-center items-center select-none text-xs w-7 h-7 rounded-full font-bold border-2 border-dashed cursor-grab ${kart === focusKart ? "opacity-90 border-fuchsia-400" : `opacity-70 ${currentColor} border-current`} ${isWhiteColor ? "text-black" : "text-white"}`}
+      className={`flex justify-center items-center select-none text-xs w-7 h-7 rounded-full font-bold border-2 border-dashed cursor-grab ${isFocused ? "opacity-90 border-fuchsia-400" : `opacity-70 ${currentColor} border-current`} ${isWhiteColor ? "text-black" : "text-white"}`}
     >
       {kart.padStart(2, "0")}
     </div>
@@ -67,7 +71,7 @@ const Kart = ({ kart, isGhost = false, onKartClick, teamStartKart, stintIndex }:
       onMouseEnter={() => setFocusKart(kart)}
       onMouseLeave={() => setFocusKart(null)}
       onClick={handleClick}
-      className={`flex justify-center items-center select-none text-xs w-7 h-7 rounded-full font-bold ${kart === focusKart ? "bg-fuchsia-600" : currentColor} cursor-grab ${isWhiteColor && kart !== focusKart ? "text-black" : "text-white"}`}
+      className={`flex justify-center items-center select-none text-xs w-7 h-7 rounded-full font-bold ${isFocused ? "bg-fuchsia-600" : currentColor} cursor-grab ${isWhiteColor && !isFocused ? "text-black" : "text-white"}`}
     >
       {kart.padStart(2, "0")}
     </div>
@@ -83,4 +87,4 @@ const Kart = ({ kart, isGhost = false, onKartClick, teamStartKart, stintIndex }:
   );
 };
 
-export default Kart;
+export default memo(Kart);

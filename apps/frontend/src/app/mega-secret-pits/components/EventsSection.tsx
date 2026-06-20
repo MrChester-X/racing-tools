@@ -9,7 +9,7 @@ interface EventsSectionProps {
 }
 
 export default function EventsSection({ onKartClick }: EventsSectionProps) {
-  const { events } = useRaceStore();
+  const events = useRaceStore((s) => s.events);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [insertIndex, setInsertIndex] = useState(-1);
   const [filterTeam, setFilterTeam] = useState<string | null>(null);

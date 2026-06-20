@@ -19,7 +19,7 @@ const ORDER_OPTIONS: { id: "top-down" | "bottom-up"; label: string }[] = [
 ];
 
 export default function PitsSection({ onKartClick }: PitsSectionProps) {
-  const { pitlane } = useRaceStore();
+  const pitlane = useRaceStore((s) => s.pitlane);
   const exitDirection = usePitlaneDisplayStore((s) => s.exitDirection);
   const order = usePitlaneDisplayStore((s) => s.order);
   const setExitDirection = usePitlaneDisplayStore((s) => s.setExitDirection);

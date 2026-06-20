@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import PitsSection from "./components/PitsSection";
 import TeamsList from "./components/TeamsList";
 import EventsSection from "./components/EventsSection";
@@ -69,9 +69,11 @@ export default function Pits() {
     updateRaceSettings(settings);
   };
 
-  const handleKartClick = (kartNumber: string) => {
+  // Stable identity so memoized Kart/Event rows aren't invalidated on every
+  // re-render of this page.
+  const handleKartClick = useCallback((kartNumber: string) => {
     setSelectedKart(kartNumber);
-  };
+  }, []);
 
   const handleCloseKartModal = () => {
     setSelectedKart(null);
@@ -83,12 +85,10 @@ export default function Pits() {
       return;
     }
 
-    // Снимок данных привязанной гонки (если есть)
-    const { heat: linkedHeat, lapsByKart } = useLinkedHeatStore.getState();
-    const linkedLapsByKart: Record<string, unknown[]> = {};
-    lapsByKart.forEach((laps, kart) => {
-      linkedLapsByKart[kart] = laps;
-    });
+    // Снимок данных привязанной гонки (если есть). Круги НЕ кладём в localStorage —
+    // на большой гонке их JSON превышает квоту (~5 МБ). PDF-страница сама дотянет
+    // круги из привязанного заезда по его id.
+    const { heat: linkedHeat } = useLinkedHeatStore.getState();
 
     // Сохраняем данные для PDF страницы
     localStorage.setItem('pdf-export-data', JSON.stringify({
@@ -97,7 +97,6 @@ export default function Pits() {
       raceData,
       pitlane,
       linkedHeat: linkedHeat ? { id: linkedHeat.id, name: linkedHeat.name } : null,
-      linkedLapsByKart: linkedHeat ? linkedLapsByKart : null,
     }));
 
     // Открываем новую страницу для PDF

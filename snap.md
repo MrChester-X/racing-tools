@@ -1,0 +1,32 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e6]
+        - generic [ref=e14]
+        - generic [ref=e18]
+    - generic [ref=e47]:
+      - generic [ref=e50]:
+        - generic [ref=e51]: Гонка не начата
+        - generic [ref=e52]: 00:00
+      - button "▶ Старт гонки" [ref=e54] [cursor=pointer]
+    - main [ref=e55]:
+      - generic [ref=e56]:
+        - generic [ref=e57]
+        - generic [ref=e90]
+        - generic [ref=e1367]
+    - button "Добавить событие" [ref=e23064] [cursor=pointer]:
+      - img [ref=e23065]
+    - contentinfo [ref=e23067]:
+      - generic [ref=e23069]:
+        - generic [ref=e23070]: Ace of Pace
+        - generic [ref=e23072]: Controlling Panel
+  - status [ref=e23077]:
+    - generic [ref=e23078]:
+      - img [ref=e23080]
+      - generic [ref=e23082]:
+        - text: Static route
+        - button "Hide static indicator" [ref=e23083] [cursor=pointer]
+  - alert [ref=e23073]
+  - 'status "Сеть: онлайн" [ref=e23087] [cursor=pointer]':
+    - generic [ref=e23076]: онлайн

@@ -27,7 +27,8 @@ function rt(lap: LapItem | undefined): number | null {
 }
 
 export default function TeamsList({ onKartClick }: TeamsListProps) {
-  const { teams, addTeam } = useRaceStore();
+  const teams = useRaceStore((s) => s.teams);
+  const addTeam = useRaceStore((s) => s.addTeam);
   const linkedHeat = useLinkedHeatStore((s) => s.heat);
   const latestByKart = useLinkedHeatStore((s) => s.latestByKart);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);

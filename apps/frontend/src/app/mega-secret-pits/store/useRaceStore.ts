@@ -653,8 +653,13 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
       } else if (event.type === "remove_kart") {
         removeKartFromPitlane(simulatedPitlane, event.lane, event.kart);
       } else if (event.type === "breakdown") {
-        // Поломка не влияет на состояние питлейна, только на команду
-        // Никаких изменений питлейна не требуется
+        // Поломка не меняет питлейн, но команда продолжает на НОВОМ карте —
+        // обновляем её текущий карт, как в setRaceData. Иначе на последующих
+        // питах в питлейн уезжал бы старый (сломанный) карт.
+        const team = simulatedTeams[event.kart];
+        if (team && event.newKart) {
+          team.karts[team.karts.length - 1] = event.newKart;
+        }
       }
     }
 

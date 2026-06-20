@@ -6,6 +6,7 @@ import { HeatItem, LapItem } from '@/app/heats/types';
 import { useRaceStore } from '../store/useRaceStore';
 import { RaceData, RaceTeam } from '../types';
 import { buildLapFilterContext, computeExcludedLapCounts } from '../lapFilters';
+import { computeBestByPhysicalKart, LAP_KART_IS_TEAM_ID } from './physicalKartBest';
 import * as api from './linkedHeatClient';
 
 interface LinkedHeatState {
@@ -19,6 +20,12 @@ interface LinkedHeatState {
   bestByKart: Map<string, number>;
   firstLapByKart: Map<string, LapItem>;
   lapsByKart: Map<string, LapItem[]>;
+  // Best lap per PHYSICAL kart (across all teams/stints) + the global best, the
+  // numbers behind every "+XX.XX" under a kart. Computed once per data change here
+  // (not per component) so the deltas read primitives and don't re-render on every
+  // incoming lap. See `_recomputeBest`.
+  bestByPhysicalKart: Map<string, number>;
+  globalBestPhysical: number | null;
   error: string | null;
 
   attachWatch: () => () => void;
@@ -27,6 +34,8 @@ interface LinkedHeatState {
   /** Recompute derived maps (best/latest/first) from lapsByKart — call this when
    * settings affecting lap filtering (e.g. minLapTimeSec) change. */
   rebuildDerivedMaps: () => void;
+  /** Recompute the physical-kart best map from current laps + teams/events/settings. */
+  _recomputeBest: () => void;
   /** internal — used by watcher */
   _load: (id: string | null) => Promise<void>;
 }
@@ -39,6 +48,8 @@ function emptyMaps() {
     bestByKart: new Map<string, number>(),
     firstLapByKart: new Map<string, LapItem>(),
     lapsByKart: new Map<string, LapItem[]>(),
+    bestByPhysicalKart: new Map<string, number>(),
+    globalBestPhysical: null as number | null,
   };
 }
 
@@ -59,7 +70,19 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
     const unsub = useRaceStore.subscribe((state, prev) => {
       const a = state.raceData?.linkedHeatId ?? null;
       const b = prev.raceData?.linkedHeatId ?? null;
-      if (a !== b) void get()._load(a);
+      if (a !== b) {
+        void get()._load(a);
+        return;
+      }
+      // teams / events / settings feed the physical-kart best map (stint
+      // attribution + lap filters) — recompute when any of them changes.
+      if (
+        state.teams !== prev.teams ||
+        state.events !== prev.events ||
+        state.raceData?.settings !== prev.raceData?.settings
+      ) {
+        get()._recomputeBest();
+      }
     });
 
     return () => {
@@ -162,6 +185,7 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
           const firstLapByKart = new Map(get().firstLapByKart);
           applyLap(lap, latestByKart, bestByKart, firstLapByKart, lapsByKart);
           set({ latestByKart, bestByKart, firstLapByKart, lapsByKart });
+          get()._recomputeBest();
         },
       )
       .subscribe(async (status) => {
@@ -177,6 +201,7 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
           const all = new Map<string, LapItem[]>();
           for (const lap of fresh) applyLap(lap, l, b, f, all);
           set({ latestByKart: l, bestByKart: b, firstLapByKart: f, lapsByKart: all });
+          get()._recomputeBest();
         } catch {
           // ignore — already have a (possibly slightly stale) snapshot
         }
@@ -228,6 +253,7 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
         firstLapByKart: newFirst,
         lapsByKart: finalLapsByKart,
       });
+      get()._recomputeBest();
     }, POLL_INTERVAL_MS);
 
     set({
@@ -242,6 +268,7 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
       isLoading: false,
       error: null,
     });
+    get()._recomputeBest();
   },
 
   rebuildDerivedMaps: () => {
@@ -253,6 +280,25 @@ export const useLinkedHeatStore = create<LinkedHeatState>((set, get) => ({
       for (const lap of laps) applyLap(lap, latestByKart, bestByKart, firstLapByKart, lapsByKart);
     }
     set({ latestByKart, bestByKart, firstLapByKart });
+    get()._recomputeBest();
+  },
+
+  _recomputeBest: () => {
+    const { lapsByKart } = get();
+    const rs = useRaceStore.getState();
+    const teams = rs.teams;
+    const events = rs.events;
+    if (!teams || !events || lapsByKart.size === 0) {
+      if (get().bestByPhysicalKart.size > 0 || get().globalBestPhysical !== null) {
+        set({ bestByPhysicalKart: new Map(), globalBestPhysical: null });
+      }
+      return;
+    }
+    const ctx = buildLapFilterContext(rs.raceData?.settings);
+    const map = computeBestByPhysicalKart(teams, events, lapsByKart, LAP_KART_IS_TEAM_ID, ctx);
+    let globalBestPhysical: number | null = null;
+    for (const v of map.values()) if (globalBestPhysical === null || v < globalBestPhysical) globalBestPhysical = v;
+    set({ bestByPhysicalKart: map, globalBestPhysical });
   },
 
   importTeams: () => {

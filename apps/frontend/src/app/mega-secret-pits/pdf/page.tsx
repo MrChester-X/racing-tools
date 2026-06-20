@@ -6,6 +6,7 @@ import { ParsedRaceEvent, ParsedRaceTeam, RaceData } from "../types";
 import { LapItem } from "@/app/heats/types";
 import { generatePdf } from "./pdfGenerator";
 import { downloadMarkdown } from "./markdownGenerator";
+import { fetchAllLaps } from "../linked-heat/linkedHeatClient";
 
 interface ExportData {
   teams: Record<string, ParsedRaceTeam>;
@@ -20,11 +21,34 @@ export default function PDFExportPage() {
   const [data, setData] = useState<ExportData | null>(null);
 
   useEffect(() => {
-    // Получаем данные из localStorage
+    // Получаем данные из localStorage (без кругов — они не влезают в квоту).
     const savedData = localStorage.getItem("pdf-export-data");
-    if (savedData) {
-      setData(JSON.parse(savedData));
+    if (!savedData) return;
+    const parsed = JSON.parse(savedData) as ExportData;
+
+    // Круги привязанного заезда дотягиваем здесь по id и группируем по карту —
+    // та же структура, что была в сторе (lapsByKart, ключ = lap.kart).
+    if (!parsed.linkedHeat?.id) {
+      setData({ ...parsed, linkedLapsByKart: null });
+      return;
     }
+    let cancelled = false;
+    (async () => {
+      try {
+        const laps = await fetchAllLaps(parsed.linkedHeat!.id);
+        if (cancelled) return;
+        const linkedLapsByKart: Record<string, LapItem[]> = {};
+        for (const lap of laps) {
+          (linkedLapsByKart[lap.kart] ??= []).push(lap);
+        }
+        setData({ ...parsed, linkedLapsByKart });
+      } catch {
+        if (!cancelled) setData({ ...parsed, linkedLapsByKart: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleExportPDF = async () => {

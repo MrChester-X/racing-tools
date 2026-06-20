@@ -54,12 +54,14 @@ export default function PitlaneVisualization({ event, eventIndex, onKartClick }:
           pitlane[prevEvent.lane].splice(index, 1);
         }
       } else if (prevEvent.type === "breakdown") {
-        // Заменяем сломанный карт на новый
-        if (prevEvent.newKart) {
-          const index = pitlane[prevEvent.lane].indexOf(prevEvent.kart);
-          if (index !== -1) {
-            pitlane[prevEvent.lane][index] = prevEvent.newKart;
-          }
+        // Поломка происходит НА ТРАССЕ: команда продолжает гонку на новом карте,
+        // питлейн при этом не меняется. Заменяем ТЕКУЩИЙ карт команды — как в
+        // setRaceData. Прежняя версия искала сломанный карт в питлейне (indexOf),
+        // но там его нет (команда на трассе) → новый карт не попадал в учёт команды,
+        // а последующий remove_kart этого карта промахивался и очередь раздувалась.
+        const team = teams[prevEvent.kart];
+        if (team && prevEvent.newKart) {
+          team[team.length - 1] = prevEvent.newKart;
         }
       }
     }

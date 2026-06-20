@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { ParsedRaceTeam } from "@/app/mega-secret-pits/types";
 import Kart from "@/app/mega-secret-pits/Kart";
 import TrashIcon from "./icons/TrashIcon";
@@ -157,8 +157,9 @@ function LinkedHeatOverlay({ startKart }: OverlayProps) {
   );
 }
 
-export default function TeamRow({ team, onKartClick, sortDelta }: TeamRowProps) {
-  const { deleteTeam, renameTeam } = useRaceStore();
+function TeamRow({ team, onKartClick, sortDelta }: TeamRowProps) {
+  const deleteTeam = useRaceStore((s) => s.deleteTeam);
+  const renameTeam = useRaceStore((s) => s.renameTeam);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -292,3 +293,5 @@ export default function TeamRow({ team, onKartClick, sortDelta }: TeamRowProps) 
     </>
   );
 }
+
+export default memo(TeamRow);

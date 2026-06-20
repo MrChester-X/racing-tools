@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { ParsedRaceEvent } from "@/app/mega-secret-pits/types";
 import { Utils } from "@/utils/Utils";
 import KartChangeIcon from "./components/icons/KartChangeIcon";
@@ -12,7 +12,7 @@ import { useRaceStore } from "./store/useRaceStore";
 import { usePitLapDelta } from "./linked-heat/usePitLapDelta";
 
 function EventTime({ timestamp }: { timestamp?: number }) {
-  const { getRaceTimer } = useRaceStore();
+  const getRaceTimer = useRaceStore((s) => s.getRaceTimer);
   const timer = getRaceTimer();
   const raceTime = Utils.formatRaceTime(timestamp, timer.startTime);
   if (!raceTime) return null;
@@ -46,7 +46,7 @@ function UnderRedBadge({ event }: { event: ParsedRaceEvent }) {
 }
 
 const Event = ({ event, eventIndex, eventNumber, onKartClick }: EventProps) => {
-  const { deleteEvent } = useRaceStore();
+  const deleteEvent = useRaceStore((s) => s.deleteEvent);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -317,4 +317,4 @@ const Event = ({ event, eventIndex, eventNumber, onKartClick }: EventProps) => {
   return null;
 };
 
-export default Event;
+export default memo(Event);
