@@ -147,7 +147,7 @@ export default function KartModal({ isOpen, onClose, kartNumber }: KartModalProp
                     const stats = linkedHeat && events
                       ? computeStintStats(
                           team.startKart,
-                          team.stintNumber,
+                          team.stint,
                           events,
                           lapsByKart.get(team.startKart),
                           raceData?.settings,

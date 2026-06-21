@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ParsedRaceEvent, ParsedRaceTeam, RaceData, RaceSettings } from "../types";
+import { KartStint, ParsedRaceEvent, ParsedRaceTeam, RaceData, RaceSettings } from "../types";
 import { LapItem } from "@/app/heats/types";
 import { buildLapFilterContext, computeExcludedLapCounts } from "../lapFilters";
 
@@ -28,34 +28,19 @@ function formatLapTime(ms: number): string {
 
 function computeStintStats(
   startKart: string,
-  stintNumber: number,
+  stint: KartStint,
   events: ParsedRaceEvent[],
   linkedLapsForTeam: LapItem[] | undefined,
   settings: RaceSettings | undefined,
 ): StintStats {
   if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
+  if (stint.startLap === null || stint.unbounded) return { kind: "missing-lap-numbers" };
 
+  const startLap = stint.startLap;
+  const endLap = stint.endLap ?? Infinity;
   const teamPits = events.filter(
     (e) => e.type === "pit" && e.team?.startKart === startKart,
   );
-
-  let startLap = 1;
-  if (stintNumber > 1) {
-    const prevPit = teamPits.find((e) => e.pitCount === stintNumber - 1);
-    if (!prevPit || typeof prevPit.lapNumber !== "number") {
-      return { kind: "missing-lap-numbers" };
-    }
-    startLap = prevPit.lapNumber + 1;
-  }
-
-  let endLap = Infinity;
-  const currentPit = teamPits.find((e) => e.pitCount === stintNumber);
-  if (currentPit) {
-    if (typeof currentPit.lapNumber !== "number") {
-      return { kind: "missing-lap-numbers" };
-    }
-    endLap = currentPit.lapNumber;
-  }
 
   const ctx = buildLapFilterContext(settings);
   const excluded = computeExcludedLapCounts(linkedLapsForTeam, teamPits, ctx);
@@ -98,10 +83,10 @@ export const PdfReport: React.FC<PdfReportProps> = ({
   linkedHeat,
   linkedLapsByKart,
 }) => {
-  // Все уникальные карты
+  // Все уникальные карты (из сегментов — включая сломанные, которых уже нет в team.karts)
   const allKarts = new Set<string>();
   Object.values(teams).forEach((team) => {
-    team.karts.forEach((kart) => allKarts.add(kart));
+    team.kartStints.forEach((seg) => allKarts.add(seg.kart));
   });
   const sortedKarts = Array.from(allKarts).sort((a, b) => parseInt(a) - parseInt(b));
 
@@ -130,51 +115,40 @@ export const PdfReport: React.FC<PdfReportProps> = ({
 
     const kartUsageHistory: KartUsagePeriod[] = [];
 
+    let earliestTs: number | undefined;
+    for (const e of events) {
+      if (e.timestamp !== undefined && (earliestTs === undefined || e.timestamp < earliestTs)) earliestTs = e.timestamp;
+    }
+
     Object.values(teams).forEach((team) => {
-      if (team.karts.includes(kartNumber)) {
-        team.karts.forEach((kart, stintIndex) => {
-          if (kart === kartNumber) {
-            const stintNumber = stintIndex + 1;
-            const isStarting = team.startKart === kartNumber && stintIndex === 0;
-            const isCurrent = stintIndex === team.karts.length - 1;
+      if (!team.kartStints.some((s) => s.kart === kartNumber)) return;
+      // Boundary events (pits + breakdowns) in order map 1:1 to segments after the
+      // first — segment i (i ≥ 1) was opened by boundary[i-1].
+      const boundary = events.filter(
+        (e) => (e.type === "pit" || e.type === "breakdown") && e.team?.startKart === team.startKart,
+      );
+      const lastIndex = team.kartStints.length - 1;
+      team.kartStints.forEach((seg, stintIndex) => {
+        if (seg.kart !== kartNumber) return;
+        const stintNumber = stintIndex + 1;
+        const isStarting = stintIndex === 0;
+        const isCurrent = stintIndex === lastIndex;
+        const startTime = stintIndex > 0 ? boundary[stintIndex - 1]?.timestamp : earliestTs;
 
-            // Временная метка для сортировки (не рендерим её в таблице)
-            let startTime: number | undefined;
-            if (isStarting) {
-              const eventsWithTime = events.filter((e) => e.timestamp);
-              if (eventsWithTime.length > 0) {
-                startTime = Math.min(...eventsWithTime.map((e) => e.timestamp!));
-              }
-            } else {
-              const pitEvent = events.find(
-                (e) => e.type === "pit" && e.team?.startKart === team.startKart && e.pitCount === stintIndex,
-              );
-              if (pitEvent) {
-                startTime = pitEvent.timestamp;
-              } else {
-                const breakdownEvent = events.find(
-                  (e) => e.type === "breakdown" && e.kart === team.startKart && e.newKart === kartNumber,
-                );
-                if (breakdownEvent) startTime = breakdownEvent.timestamp;
-              }
-            }
+        const stats = linkedHeat && linkedLapsByKart
+          ? computeStintStats(team.startKart, seg, events, linkedLapsByKart[team.startKart], raceData.settings)
+          : null;
 
-            const stats = linkedHeat && linkedLapsByKart
-              ? computeStintStats(team.startKart, stintNumber, events, linkedLapsByKart[team.startKart], raceData.settings)
-              : null;
-
-            kartUsageHistory.push({
-              teamName: team.name,
-              startKart: team.startKart,
-              stintNumber,
-              isStarting,
-              isCurrent,
-              stats,
-              startTime,
-            });
-          }
+        kartUsageHistory.push({
+          teamName: team.name,
+          startKart: team.startKart,
+          stintNumber,
+          isStarting,
+          isCurrent,
+          stats,
+          startTime,
         });
-      }
+      });
     });
 
     kartUsageHistory.sort((a, b) => {

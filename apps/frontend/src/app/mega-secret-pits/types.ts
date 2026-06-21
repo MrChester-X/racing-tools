@@ -27,10 +27,22 @@ export interface RaceTeam {
   startKart: string;
 }
 
+// One continuous run on a single physical kart, bounded by pits AND breakdowns.
+// `team.karts` keeps only the pit-delimited final kart per stint (used by pit-event
+// cards / PDF kart-change columns); `kartStints` is the finer split needed to
+// attribute laps correctly when a breakdown swaps the kart mid-stint.
+export interface KartStint {
+  kart: string;
+  startLap: number | null; // first lap on this kart; null = opening boundary lap unknown
+  endLap: number | null; // last lap on this kart; null = still running (no closing event)
+  unbounded?: boolean; // closing event exists but had no lapNumber → not attributable
+}
+
 export interface ParsedRaceTeam {
   name: string;
   startKart: string;
   karts: string[];
+  kartStints: KartStint[];
 }
 
 export interface RaceSettings {

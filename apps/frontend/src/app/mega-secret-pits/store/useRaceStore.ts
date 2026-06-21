@@ -134,7 +134,7 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
     const newTeams: { [startKart: string]: ParsedRaceTeam } = structuredClone(data.teams).reduce(
       (acc, team) => ({
         ...acc,
-        [team.startKart]: { ...team, karts: [team.startKart] },
+        [team.startKart]: { ...team, karts: [team.startKart], kartStints: [] },
       }),
       {},
     );
@@ -142,11 +142,35 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
     const newPitlane = structuredClone(data.startPitlane);
     const newEvents: ParsedRaceEvent[] = [];
 
+    // Open kart segment per team — closed (and a new one opened) at every pit and
+    // breakdown so laps split between the old and new kart at the boundary lap.
+    const openSeg: { [startKart: string]: { kart: string; startLap: number | null } } = {};
+    for (const team of Object.values(newTeams)) {
+      openSeg[team.startKart] = { kart: team.startKart, startLap: 1 };
+    }
+    // Close the current segment at boundary lap `L` (the last lap on the old kart)
+    // and open the next one on `nextKart` starting at L+1. A missing L marks the
+    // closed segment unbounded and the next one's start unknown — both unattributable,
+    // exactly like a pit-stint without a lap number. Segment order already encodes
+    // chronology (events are processed in order), so no timestamp is stored here.
+    const advanceSegment = (team: ParsedRaceTeam, L: number | undefined, nextKart: string) => {
+      const seg = openSeg[team.startKart];
+      const hasLap = typeof L === "number" && Number.isFinite(L);
+      team.kartStints.push({
+        kart: seg.kart,
+        startLap: seg.startLap,
+        endLap: hasLap ? L : null,
+        ...(hasLap ? {} : { unbounded: true }),
+      });
+      openSeg[team.startKart] = { kart: nextKart, startLap: hasLap ? L + 1 : null };
+    };
+
     for (const event of data.events) {
       if (event.type === "pit") {
         const team = newTeams[event.kart];
         if (team) {
           processPitlane(newPitlane, event.lane, team);
+          advanceSegment(team, event.lapNumber, team.karts[team.karts.length - 1]);
           newEvents.push({
             ...event,
             team,
@@ -174,7 +198,9 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
           // ЗАМЕНЯЕМ текущий карт команды на новый (НЕ добавляем!)
           const currentKart = team.karts[team.karts.length - 1];
           team.karts[team.karts.length - 1] = event.newKart; // Замена, а не добавление
-          
+          // Поломка делит стинт: круги <= lapNumber на старом карте, > на новом.
+          advanceSegment(team, event.lapNumber, event.newKart);
+
           // Сохраняем информацию о замене в событии
           newEvents.push({
             ...event,
@@ -193,6 +219,12 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
           });
         }
       }
+    }
+
+    // Close the final (running) segment for every team — open-ended, attributable.
+    for (const team of Object.values(newTeams)) {
+      const seg = openSeg[team.startKart];
+      team.kartStints.push({ kart: seg.kart, startLap: seg.startLap, endLap: null });
     }
 
     set({
@@ -418,8 +450,10 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
       ...(eventType === "add_kart" && position !== undefined && { position: Number(position) }),
       // Добавляем newKart для breakdown событий
       ...(eventType === "breakdown" && newKart && { newKart: newKart.toString().trim() }),
-      // Добавляем lapNumber для pit событий, если указан
-      ...(eventType === "pit" && typeof lapNumber === "number" && Number.isFinite(lapNumber) && { lapNumber }),
+      // Добавляем lapNumber для pit и breakdown событий, если указан
+      ...((eventType === "pit" || eventType === "breakdown") &&
+        typeof lapNumber === "number" &&
+        Number.isFinite(lapNumber) && { lapNumber }),
     };
 
     const newEvents = [...raceData.events];
@@ -634,7 +668,7 @@ export const useRaceStore = create<RaceStore>((set, get) => ({
     const simulatedTeams: { [startKart: string]: ParsedRaceTeam } = structuredClone(raceData.teams).reduce(
       (acc, team) => ({
         ...acc,
-        [team.startKart]: { ...team, karts: [team.startKart] },
+        [team.startKart]: { ...team, karts: [team.startKart], kartStints: [] },
       }),
       {},
     );

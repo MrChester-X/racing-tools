@@ -1,5 +1,5 @@
 import { useLinkedHeatStore } from "./useLinkedHeatStore";
-import { ParsedRaceEvent, ParsedRaceTeam, RaceSettings } from "../types";
+import { KartStint, ParsedRaceEvent, ParsedRaceTeam, RaceSettings } from "../types";
 import { LapItem } from "@/app/heats/types";
 import { buildLapFilterContext, computeExcludedLapCounts } from "../lapFilters";
 import { normalizeKart } from "./physicalKartBest";
@@ -9,31 +9,23 @@ export type StintStats =
   | { kind: "missing-lap-numbers" }
   | { kind: "no-data" };
 
-/** Lap count / average / best for a single team stint, from the linked heat. */
+/** Lap count / average / best for a single kart segment (a continuous run on one
+ * kart, split by pits AND breakdowns), from the linked heat. */
 export function computeStintStats(
   startKart: string,
-  stintNumber: number,
+  stint: KartStint,
   events: ParsedRaceEvent[],
   linkedLapsForTeam: LapItem[] | undefined,
   settings: RaceSettings | undefined,
 ): StintStats {
   if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
+  // A segment whose boundary lap is unknown can't be delimited — same as a
+  // pit-stint without a lap number.
+  if (stint.startLap === null || stint.unbounded) return { kind: "missing-lap-numbers" };
 
+  const startLap = stint.startLap;
+  const endLap = stint.endLap ?? Infinity;
   const teamPits = events.filter((e) => e.type === "pit" && e.team?.startKart === startKart);
-
-  let startLap = 1;
-  if (stintNumber > 1) {
-    const prevPit = teamPits.find((e) => e.pitCount === stintNumber - 1);
-    if (!prevPit || typeof prevPit.lapNumber !== "number") return { kind: "missing-lap-numbers" };
-    startLap = prevPit.lapNumber + 1;
-  }
-
-  let endLap = Infinity;
-  const currentPit = teamPits.find((e) => e.pitCount === stintNumber);
-  if (currentPit) {
-    if (typeof currentPit.lapNumber !== "number") return { kind: "missing-lap-numbers" };
-    endLap = currentPit.lapNumber;
-  }
 
   const ctx = buildLapFilterContext(settings);
   const excluded = computeExcludedLapCounts(linkedLapsForTeam, teamPits, ctx);
@@ -65,13 +57,14 @@ export interface TeamOnKart {
   name: string;
   startKart: string;
   stintNumber: number;
+  stint: KartStint;
   timestamp?: number;
   isCurrent: boolean;
   isStarting: boolean;
   timeAgo?: string;
 }
 
-/** Every team stint that drove a given physical kart, ordered exactly like the
+/** Every kart segment that drove a given physical kart, ordered exactly like the
  * kart modal on the main page: current first, starting last, else newest-first
  * by the timestamp the team got onto the kart. */
 export function getTeamsOnKart(
@@ -89,55 +82,42 @@ export function getTeamsOnKart(
     return "только что";
   };
 
+  let earliestTs: number | undefined;
+  for (const e of events) {
+    if (e.timestamp !== undefined && (earliestTs === undefined || e.timestamp < earliestTs)) earliestTs = e.timestamp;
+  }
+
   Object.values(teams).forEach((team) => {
-    if (!team.karts.includes(kartNumber)) return;
+    if (!team.kartStints.some((s) => s.kart === kartNumber)) return;
 
-    const kartIndices = team.karts
-      .map((kart, index) => (kart === kartNumber ? index : -1))
-      .filter((index) => index !== -1);
+    // The team's boundary events (pits + breakdowns) in order map 1:1 to its
+    // segments after the first — segment i (i ≥ 1) was opened by boundary[i-1] —
+    // so we read the "got on the kart" timestamp without re-matching by kart.
+    const boundary = events.filter(
+      (e) => (e.type === "pit" || e.type === "breakdown") && e.team?.startKart === team.startKart,
+    );
+    const lastIndex = team.kartStints.length - 1;
 
-    const currentKartIndex = team.karts.length - 1;
-    const currentKart = team.karts[currentKartIndex];
-
-    // One entry per time this team sat on this kart.
-    kartIndices.forEach((kartIndex) => {
-      const stintNumber = kartIndex + 1;
-      const isStarting = team.startKart === kartNumber && kartIndex === 0;
-      const isCurrent = currentKart === kartNumber && kartIndex === currentKartIndex;
-
-      // When the team got onto this kart for this stint.
-      let timestamp: number | undefined;
-      if (!isStarting && kartIndex > 0) {
-        const pitEvent = events.find(
-          (event) =>
-            event.type === "pit" &&
-            event.team &&
-            event.team.startKart === team.startKart &&
-            event.pitCount === kartIndex,
-        );
-        timestamp = pitEvent?.timestamp;
-        if (!timestamp) {
-          const breakdownEvent = events.find(
-            (event) =>
-              event.type === "breakdown" &&
-              event.kart === team.startKart &&
-              event.newKart === kartNumber,
-          );
-          timestamp = breakdownEvent?.timestamp;
-        }
-      }
+    team.kartStints.forEach((seg, idx) => {
+      if (seg.kart !== kartNumber) return;
+      const isStarting = idx === 0;
+      const isCurrent = idx === lastIndex;
+      const timestamp = idx > 0 ? boundary[idx - 1]?.timestamp : undefined;
 
       let timeAgo: string | undefined;
-      if (timestamp) {
-        timeAgo = formatAgo(timestamp);
-      } else if (isStarting) {
-        const eventsWithTime = events.filter((event) => event.timestamp);
-        if (eventsWithTime.length > 0) {
-          timeAgo = formatAgo(Math.min(...eventsWithTime.map((event) => event.timestamp!)));
-        }
-      }
+      if (timestamp !== undefined) timeAgo = formatAgo(timestamp);
+      else if (isStarting && earliestTs !== undefined) timeAgo = formatAgo(earliestTs);
 
-      kartTeams.push({ name: team.name, startKart: team.startKart, stintNumber, timestamp, isCurrent, isStarting, timeAgo });
+      kartTeams.push({
+        name: team.name,
+        startKart: team.startKart,
+        stintNumber: idx + 1,
+        stint: seg,
+        timestamp,
+        isCurrent,
+        isStarting,
+        timeAgo,
+      });
     });
   });
 

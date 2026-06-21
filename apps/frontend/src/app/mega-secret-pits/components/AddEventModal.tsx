@@ -131,7 +131,7 @@ export default function AddEventModal({
   // При смене команды или типа события подставляем текущий (in-progress)
   // круг как выбор по умолчанию, если есть привязанная гонка. Иначе сбрасываем.
   useEffect(() => {
-    if (eventType === "pit" && teamKart && linkedHeat && inProgressForTeam) {
+    if ((eventType === "pit" || eventType === "breakdown") && teamKart && linkedHeat && inProgressForTeam) {
       setPitLapNumber(inProgressForTeam.nextLapNumber);
     } else {
       setPitLapNumber(null);
@@ -215,7 +215,9 @@ export default function AddEventModal({
     // Для breakdown события питлейн не используется, устанавливаем 0
     const eventLane = eventType === "breakdown" ? 0 : lane;
     const lapNumberArg =
-      eventType === "pit" && pitLapNumber !== null ? pitLapNumber : undefined;
+      (eventType === "pit" || eventType === "breakdown") && pitLapNumber !== null
+        ? pitLapNumber
+        : undefined;
     const success = addEvent(eventType, kart, eventLane, insertIndex, position, newKart, lapNumberArg);
 
     if (!success) {
@@ -240,6 +242,74 @@ export default function AddEventModal({
     if (insertIndex === 0) return "в начало";
     if (insertIndex === -1) return "в конец";
     return `на позицию ${insertIndex + 1}`;
+  };
+
+  // Optional lap picker from the linked heat — shared by the pit and breakdown
+  // forms (same design); `label` differs ("Круг питстопа" / "Круг поломки").
+  const renderLapPicker = (label: string) => {
+    if (!linkedHeat || !teamKart) return null;
+    return (
+      <div>
+        <label className="block text-lg font-medium text-gray-300 mb-2 text-left">
+          {label} <span className="text-gray-500 text-sm">(опционально)</span>
+        </label>
+        {teamLaps.length === 0 ? (
+          <div className="text-sm text-gray-500 bg-gray-800/40 p-3 rounded-lg border border-gray-600/30">
+            Кругов в привязанной гонке для этой команды ещё нет.
+          </div>
+        ) : (
+          <div className="bg-gray-800/40 border border-gray-600/30 rounded-lg max-h-64 overflow-y-auto">
+            <FutureLapButton
+              startKart={teamKart}
+              selectedLapNumber={pitLapNumber}
+              onToggle={(lapNumber) => setPitLapNumber(pitLapNumber === lapNumber ? null : lapNumber)}
+            />
+            <InProgressLapButton
+              startKart={teamKart}
+              selectedLapNumber={pitLapNumber}
+              onToggle={(lapNumber) => setPitLapNumber(pitLapNumber === lapNumber ? null : lapNumber)}
+            />
+            <button
+              type="button"
+              onClick={() => setPitLapNumber(null)}
+              className={`w-full text-left px-3 py-2 text-sm border-b border-gray-700 transition-colors ${
+                pitLapNumber === null
+                  ? "bg-blue-600/30 text-blue-100"
+                  : "text-gray-400 hover:bg-gray-700/40"
+              }`}
+            >
+              — Без привязки к кругу
+            </button>
+            {teamLaps.map((lap) => {
+              const alreadyPitted = pittedLapsForTeam.has(lap.lapCount);
+              const isSelected = pitLapNumber === lap.lapCount;
+              return (
+                <button
+                  key={lap.id}
+                  type="button"
+                  onClick={() => setPitLapNumber(isSelected ? null : lap.lapCount)}
+                  className={`w-full flex items-center justify-between gap-3 px-3 py-1.5 text-sm font-mono border-b border-gray-700/50 transition-colors ${
+                    isSelected
+                      ? "bg-blue-600/40 text-white"
+                      : alreadyPitted
+                        ? "text-orange-300 hover:bg-orange-900/20"
+                        : "text-gray-300 hover:bg-gray-700/40"
+                  }`}
+                >
+                  <span>Lap {lap.lapCount}</span>
+                  <span className="text-gray-500">{formatLapTime(lap.time)}</span>
+                  <span className="w-12 text-right">
+                    {alreadyPitted && (
+                      <span title="На этом круге уже зафиксирован питстоп этой команды">🅿️ pit</span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -291,76 +361,7 @@ export default function AddEventModal({
                   </select>
                 </div>
 
-                {linkedHeat && teamKart && (
-                  <div>
-                    <label className="block text-lg font-medium text-gray-300 mb-2 text-left">
-                      Круг питстопа <span className="text-gray-500 text-sm">(опционально)</span>
-                    </label>
-                    {teamLaps.length === 0 ? (
-                      <div className="text-sm text-gray-500 bg-gray-800/40 p-3 rounded-lg border border-gray-600/30">
-                        Кругов в привязанной гонке для этой команды ещё нет.
-                      </div>
-                    ) : (
-                      <div className="bg-gray-800/40 border border-gray-600/30 rounded-lg max-h-64 overflow-y-auto">
-                        <FutureLapButton
-                          startKart={teamKart}
-                          selectedLapNumber={pitLapNumber}
-                          onToggle={(lapNumber) =>
-                            setPitLapNumber(pitLapNumber === lapNumber ? null : lapNumber)
-                          }
-                        />
-                        <InProgressLapButton
-                          startKart={teamKart}
-                          selectedLapNumber={pitLapNumber}
-                          onToggle={(lapNumber) =>
-                            setPitLapNumber(pitLapNumber === lapNumber ? null : lapNumber)
-                          }
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setPitLapNumber(null)}
-                          className={`w-full text-left px-3 py-2 text-sm border-b border-gray-700 transition-colors ${
-                            pitLapNumber === null
-                              ? "bg-blue-600/30 text-blue-100"
-                              : "text-gray-400 hover:bg-gray-700/40"
-                          }`}
-                        >
-                          — Без привязки к кругу
-                        </button>
-                        {teamLaps.map((lap) => {
-                          const alreadyPitted = pittedLapsForTeam.has(lap.lapCount);
-                          const isSelected = pitLapNumber === lap.lapCount;
-                          return (
-                            <button
-                              key={lap.id}
-                              type="button"
-                              onClick={() =>
-                                setPitLapNumber(isSelected ? null : lap.lapCount)
-                              }
-                              className={`w-full flex items-center justify-between gap-3 px-3 py-1.5 text-sm font-mono border-b border-gray-700/50 transition-colors ${
-                                isSelected
-                                  ? "bg-blue-600/40 text-white"
-                                  : alreadyPitted
-                                    ? "text-orange-300 hover:bg-orange-900/20"
-                                    : "text-gray-300 hover:bg-gray-700/40"
-                              }`}
-                            >
-                              <span>Lap {lap.lapCount}</span>
-                              <span className="text-gray-500">{formatLapTime(lap.time)}</span>
-                              <span className="w-12 text-right">
-                                {alreadyPitted && (
-                                  <span title="На этом круге уже зафиксирован питстоп этой команды">
-                                    🅿️ pit
-                                  </span>
-                                )}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {renderLapPicker("Круг питстопа")}
               </div>
             ) : eventType === "add_kart" ? (
               <div className="space-y-4">
@@ -442,6 +443,8 @@ export default function AddEventModal({
                     <div className="mt-1">Рекомендуемые новые номера: {suggestedKartNumbers.map(num => `#${num.toString().padStart(2, "0")}`).join(", ")}</div>
                   </div>
                 </div>
+
+                {renderLapPicker("Круг поломки")}
               </div>
             ) : (
               <div>

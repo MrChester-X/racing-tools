@@ -1,4 +1,4 @@
-import { ParsedRaceEvent, ParsedRaceTeam, RaceData, RaceSettings } from "../types";
+import { KartStint, ParsedRaceEvent, ParsedRaceTeam, RaceData, RaceSettings } from "../types";
 import { LapItem } from "@/app/heats/types";
 import { buildLapFilterContext, computeExcludedLapCounts } from "../lapFilters";
 
@@ -35,25 +35,16 @@ export function formatLapTime(ms: number): string {
 
 export function computeStintStats(
   startKart: string,
-  stintNumber: number,
+  stint: KartStint,
   events: ParsedRaceEvent[],
   linkedLapsForTeam: LapItem[] | undefined,
   settings: RaceSettings | undefined,
 ): StintStats {
   if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
+  if (stint.startLap === null || stint.unbounded) return { kind: "missing-lap-numbers" };
+  const startLap = stint.startLap;
+  const endLap = stint.endLap ?? Infinity;
   const teamPits = events.filter((e) => e.type === "pit" && e.team?.startKart === startKart);
-  let startLap = 1;
-  if (stintNumber > 1) {
-    const prevPit = teamPits.find((e) => e.pitCount === stintNumber - 1);
-    if (!prevPit || typeof prevPit.lapNumber !== "number") return { kind: "missing-lap-numbers" };
-    startLap = prevPit.lapNumber + 1;
-  }
-  let endLap = Infinity;
-  const currentPit = teamPits.find((e) => e.pitCount === stintNumber);
-  if (currentPit) {
-    if (typeof currentPit.lapNumber !== "number") return { kind: "missing-lap-numbers" };
-    endLap = currentPit.lapNumber;
-  }
   const ctx = buildLapFilterContext(settings);
   // Compute excluded set from the FULL team list — exclude-after-long and
   // exclude-after-missing need predecessor info that might live in an earlier
@@ -94,31 +85,26 @@ export function buildKartHistory(
   settings: RaceSettings | undefined,
 ): KartHistoryEntry[] {
   const history: KartHistoryEntry[] = [];
+  let earliestTs: number | undefined;
+  for (const e of events) {
+    if (e.timestamp !== undefined && (earliestTs === undefined || e.timestamp < earliestTs)) earliestTs = e.timestamp;
+  }
   Object.values(teams).forEach((team) => {
-    if (!team.karts.includes(kartNumber)) return;
-    team.karts.forEach((kart, stintIndex) => {
-      if (kart !== kartNumber) return;
+    if (!team.kartStints.some((s) => s.kart === kartNumber)) return;
+    // Boundary events (pits + breakdowns) in order map 1:1 to segments after the
+    // first — segment i (i ≥ 1) was opened by boundary[i-1].
+    const boundary = events.filter(
+      (e) => (e.type === "pit" || e.type === "breakdown") && e.team?.startKart === team.startKart,
+    );
+    const lastIndex = team.kartStints.length - 1;
+    team.kartStints.forEach((seg, stintIndex) => {
+      if (seg.kart !== kartNumber) return;
       const stintNumber = stintIndex + 1;
-      const isStarting = team.startKart === kartNumber && stintIndex === 0;
-      const isCurrent = stintIndex === team.karts.length - 1;
-      let startTime: number | undefined;
-      if (isStarting) {
-        const evWithTime = events.filter((e) => e.timestamp);
-        if (evWithTime.length > 0) startTime = Math.min(...evWithTime.map((e) => e.timestamp!));
-      } else {
-        const pit = events.find(
-          (e) => e.type === "pit" && e.team?.startKart === team.startKart && e.pitCount === stintIndex,
-        );
-        if (pit) startTime = pit.timestamp;
-        else {
-          const brk = events.find(
-            (e) => e.type === "breakdown" && e.kart === team.startKart && e.newKart === kartNumber,
-          );
-          if (brk) startTime = brk.timestamp;
-        }
-      }
+      const isStarting = stintIndex === 0;
+      const isCurrent = stintIndex === lastIndex;
+      const startTime = stintIndex > 0 ? boundary[stintIndex - 1]?.timestamp : earliestTs;
       const stats = linkedHeatPresent
-        ? computeStintStats(team.startKart, stintNumber, events, linkedLapsByKart?.[team.startKart], settings)
+        ? computeStintStats(team.startKart, seg, events, linkedLapsByKart?.[team.startKart], settings)
         : null;
       history.push({ teamName: team.name, startKart: team.startKart, stintNumber, isStarting, isCurrent, stats, startTime });
     });

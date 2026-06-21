@@ -2,7 +2,6 @@ import jsPDF from "jspdf";
 import autoTable, { RowInput } from "jspdf-autotable";
 import {
   buildKartHistory,
-  computeStintStats,
   formatLapTime,
   getKartSummary,
   KartHistoryEntry,
@@ -256,7 +255,7 @@ export async function generatePdf(input: PdfExportInput, filename: string): Prom
 
   // =============== STATS STRIP ===============
   const allKarts = new Set<string>();
-  Object.values(teams).forEach((t) => t.karts.forEach((k) => allKarts.add(k)));
+  Object.values(teams).forEach((t) => t.kartStints.forEach((s) => allKarts.add(s.kart)));
   const sortedKarts = Array.from(allKarts).sort((a, b) => parseInt(a) - parseInt(b));
 
   const kartsInPits = new Set<string>();

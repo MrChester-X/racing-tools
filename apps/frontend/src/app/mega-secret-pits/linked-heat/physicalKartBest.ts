@@ -19,26 +19,6 @@ export function normalizeKart(k: string | null | undefined): string {
     : trimmed;
 }
 
-export function computeStintLapRange(
-  teamPits: ParsedRaceEvent[],
-  stintIndex: number,
-): { startLap: number; endLap: number } | null {
-  const stintNumber = stintIndex + 1;
-  let startLap = 1;
-  if (stintNumber > 1) {
-    const prevPit = teamPits.find((e) => e.pitCount === stintNumber - 1);
-    if (!prevPit || typeof prevPit.lapNumber !== "number") return null;
-    startLap = prevPit.lapNumber + 1;
-  }
-  let endLap = Infinity;
-  const currentPit = teamPits.find((e) => e.pitCount === stintNumber);
-  if (currentPit) {
-    if (typeof currentPit.lapNumber !== "number") return null;
-    endLap = currentPit.lapNumber;
-  }
-  return { startLap, endLap };
-}
-
 // In EVERY timing system we ingest, `lap.kart` is the TEAM identifier (constant
 // across the race), never the physical kart number — the physical kart driven in
 // each stint is derived from the team's pit history (Phase 2 below).
@@ -89,7 +69,9 @@ export function computeBestByPhysicalKart(
     }
   }
 
-  // Phase 2: stint-range mapping for team-id timing (racemann/getraceresults).
+  // Phase 2: segment mapping for team-id timing (racemann/getraceresults). Each
+  // kart segment (split by pits AND breakdowns) attributes its laps to the physical
+  // kart driven during it. Segments whose boundary lap is unknown are skipped.
   if (lapKartIsTeamId) {
     for (const team of Object.values(teams)) {
       const teamLaps = lapsByKart.get(team.startKart);
@@ -98,16 +80,17 @@ export function computeBestByPhysicalKart(
         (e) => e.type === "pit" && e.team?.startKart === team.startKart,
       );
       const excluded = computeExcludedLapCounts(teamLaps, teamPits, ctx);
-      team.karts.forEach((physicalKart, stintIndex) => {
-        const range = computeStintLapRange(teamPits, stintIndex);
-        if (!range) return;
+      for (const seg of team.kartStints) {
+        if (seg.startLap === null || seg.unbounded) continue;
+        const start = seg.startLap;
+        const end = seg.endLap ?? Infinity;
         for (const lap of teamLaps) {
           if (excluded.has(lap.lapCount)) continue;
-          if (lap.lapCount >= range.startLap && lap.lapCount <= range.endLap) {
-            setBest(physicalKart, lap.time);
+          if (lap.lapCount >= start && lap.lapCount <= end) {
+            setBest(seg.kart, lap.time);
           }
         }
-      });
+      }
     }
   }
 

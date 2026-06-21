@@ -103,7 +103,7 @@ export default function MobileMode() {
       if (last && last.kart === kart && now - last.time < 400) {
         // Double click -> open modal
         lastClickRef.current = null;
-        setReplaceKartNumber(opts?.teamStartKart ? suggestedKartRef.current : "");
+        setReplaceKartNumber(opts?.teamStartKart || opts?.inPitlane ? suggestedKartRef.current : "");
         setKartActionModal({
           kart,
           inPitlane: opts?.inPitlane,
@@ -214,7 +214,11 @@ export default function MobileMode() {
       alert(`Карт ${newKart} уже используется другой командой`);
       return;
     }
-    addEvent("breakdown", kartActionModal.teamStartKart, 0, -1, undefined, newKart);
+    // Tag the repair with the team's current lap from the linked heat (latest + 1),
+    // same as a pit — no manual lap entry in mobile.
+    const latest = useLinkedHeatStore.getState().latestByKart.get(kartActionModal.teamStartKart);
+    const lapNumber = latest ? latest.lapCount + 1 : undefined;
+    addEvent("breakdown", kartActionModal.teamStartKart, 0, -1, undefined, newKart, lapNumber);
     setNewKartColor(newKart);
     setKartActionModal(null);
     setReplaceKartNumber("");
@@ -247,6 +251,23 @@ export default function MobileMode() {
     },
     [pitlane, addEvent],
   );
+
+  // Repair a kart sitting in the pitlane: swap its number for a new one in place
+  // (remove the old number, re-add the new one at the same queue position).
+  const handleChangePitlaneKartNumber = useCallback(() => {
+    if (!kartActionModal?.inPitlane || !replaceKartNumber.trim()) return;
+    const { laneIndex } = kartActionModal.inPitlane;
+    const oldKart = kartActionModal.kart;
+    const newKart = replaceKartNumber.trim();
+    if (newKart !== oldKart) {
+      const pos = pitlane?.[laneIndex]?.indexOf(oldKart) ?? -1;
+      addEvent("remove_kart", oldKart, laneIndex, -1);
+      addEvent("add_kart", newKart, laneIndex, -1, pos >= 0 ? pos : undefined);
+      setNewKartColor(newKart);
+    }
+    setKartActionModal(null);
+    setReplaceKartNumber("");
+  }, [kartActionModal, replaceKartNumber, pitlane, addEvent, setNewKartColor]);
 
   if (!raceData || !pitlane || !teams || !events) {
     return (
@@ -601,6 +622,7 @@ export default function MobileMode() {
           replaceKartNumber={replaceKartNumber}
           setReplaceKartNumber={setReplaceKartNumber}
           onReplaceKart={handleReplaceKart}
+          onChangePitlaneKartNumber={handleChangePitlaneKartNumber}
           isKartUsedEver={isKartUsedEver}
           onClose={() => {
             setKartActionModal(null);
@@ -668,6 +690,7 @@ function KartActionModal({
   replaceKartNumber,
   setReplaceKartNumber,
   onReplaceKart,
+  onChangePitlaneKartNumber,
   isKartUsedEver,
   onClose,
 }: {
@@ -681,6 +704,7 @@ function KartActionModal({
   replaceKartNumber: string;
   setReplaceKartNumber: (v: string) => void;
   onReplaceKart: () => void;
+  onChangePitlaneKartNumber: () => void;
   isKartUsedEver: (kartNumber: string) => boolean;
   onClose: () => void;
 }) {
@@ -776,6 +800,35 @@ function KartActionModal({
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Change number (repair) — for a kart sitting in the pitlane */}
+        {state.inPitlane && (
+          <div className="mb-4">
+            <h4 className="text-sm font-bold text-gray-300 mb-2">Сменить номер (ремонт)</h4>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={replaceKartNumber}
+                onChange={(e) => setReplaceKartNumber(e.target.value)}
+                placeholder="Новый номер"
+                className={`flex-1 p-2 bg-gray-700 rounded-lg text-white text-center font-bold placeholder-gray-500 focus:outline-none focus:ring-2 ${
+                  isKartUsedEver(replaceKartNumber) ? "ring-2 ring-amber-500 focus:ring-amber-500" : "focus:ring-purple-500"
+                }`}
+              />
+              <button
+                onClick={onChangePitlaneKartNumber}
+                disabled={!replaceKartNumber.trim()}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-bold"
+              >
+                Сменить
+              </button>
+            </div>
+            {isKartUsedEver(replaceKartNumber) && (
+              <p className="text-amber-400 text-xs mt-1.5">⚠️ Карт #{replaceKartNumber.trim()} уже был в гонке</p>
+            )}
           </div>
         )}
 
@@ -894,7 +947,7 @@ function KartStintHistory({ kart }: { kart: string }) {
       <div className="space-y-1 max-h-40 overflow-y-auto">
         {entries.map((e) => {
           const stats = events
-            ? computeStintStats(e.startKart, e.stintNumber, events, lapsByKart.get(e.startKart), settings)
+            ? computeStintStats(e.startKart, e.stint, events, lapsByKart.get(e.startKart), settings)
             : null;
           return (
             <div

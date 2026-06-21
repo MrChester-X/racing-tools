@@ -284,6 +284,9 @@ const Event = ({ event, eventIndex, eventNumber, onKartClick }: EventProps) => {
               <div className="text-orange-100 text-xs mb-1">Стартовый карт: #{event.kart.padStart(2, "0")}</div>
             )}
             <div className="text-orange-100 text-xs">Поломка на треке (не в питлейне)</div>
+            {typeof event.lapNumber === "number" && (
+              <div className="text-cyan-200 text-xs mt-1">🔗 Lap {event.lapNumber}</div>
+            )}
           </div>
 
           {/* Kart replacement */}

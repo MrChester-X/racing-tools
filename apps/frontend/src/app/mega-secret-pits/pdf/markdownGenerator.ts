@@ -16,7 +16,7 @@ export function generateMarkdown(input: ReportInput): string {
   const raceName = raceData.settings?.raceName?.trim();
 
   const allKarts = new Set<string>();
-  Object.values(teams).forEach((t) => t.karts.forEach((k) => allKarts.add(k)));
+  Object.values(teams).forEach((t) => t.kartStints.forEach((s) => allKarts.add(s.kart)));
   const sortedKarts = Array.from(allKarts).sort((a, b) => parseInt(a) - parseInt(b));
 
   const kartsInPits = new Set<string>();
