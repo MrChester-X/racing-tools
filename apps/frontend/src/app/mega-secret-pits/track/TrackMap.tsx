@@ -135,14 +135,14 @@ export function TrackMap({ track, teams }: { track: TrackDef; teams: ParsedRaceT
 
         {/* Kart markers — positions already de-overlapped by resolvePositions. */}
         {placed.map(({ team, x, y }) => (
-          <TrackMarker key={team.startKart} team={team} x={x} y={y} />
+          <TrackMarker key={team.startKart} team={team} x={x} y={y} labelTransform={track.labelTransform} />
         ))}
       </g>
     </svg>
   );
 }
 
-function TrackMarker({ team, x, y }: { team: ParsedRaceTeam; x: number; y: number }) {
+function TrackMarker({ team, x, y, labelTransform }: { team: ParsedRaceTeam; x: number; y: number; labelTransform: string }) {
   const kartColors = useRaceStore((s) => s.raceData?.kartColors) ?? {};
   const isFavorite = useFavoriteTeamsStore((s) => !!s.favorites[team.startKart]);
 
@@ -168,7 +168,7 @@ function TrackMarker({ team, x, y }: { team: ParsedRaceTeam; x: number; y: numbe
         x={0}
         y={1.4}
         textAnchor="middle"
-        transform="scale(-1 1) rotate(70)"
+        transform={labelTransform || undefined}
         style={{
           fontFamily: '"Geist Mono", monospace',
           fontSize: "4.3px",

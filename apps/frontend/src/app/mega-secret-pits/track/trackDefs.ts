@@ -15,6 +15,9 @@ export interface TrackDef {
   viewBox: string;
   /** Outer <g> transform from the source SVG (rotation + mirror). */
   transform: string;
+  /** Counter-transform applied to kart-number labels so they read upright
+   * despite `transform` (rotation/mirror). Empty when `transform` is identity. */
+  labelTransform: string;
   /** All drawable track segments (raw SVG `points` strings). */
   segments: string[];
   startFinish: StartFinish;
@@ -50,8 +53,9 @@ function makeTrack(opts: {
   label: string;
   viewBox: string;
   transform: string;
+  labelTransform?: string;
   loop: string[];
-  infield: string;
+  infield?: string;
   startFinish: StartFinish;
 }): TrackDef {
   const centerline = buildCenterline(opts.loop.flatMap(parsePoints));
@@ -62,7 +66,8 @@ function makeTrack(opts: {
     label: opts.label,
     viewBox: opts.viewBox,
     transform: opts.transform,
-    segments: [...opts.loop, opts.infield],
+    labelTransform: opts.labelTransform ?? "",
+    segments: opts.infield ? [...opts.loop, opts.infield] : [...opts.loop],
     startFinish: opts.startFinish,
     centerline,
     startOffset: nearestLength(centerline, midX, midY),
@@ -75,6 +80,7 @@ const PITSTOP_NARVSKAYA_REVERSE = makeTrack({
   viewBox: "-81.439 -92.058 192.076 211.593",
   transform:
     "rotate(-70 14.599 13.7385) translate(14.599 13.7385) scale(-1 1) translate(-14.599 -13.7385)",
+  labelTransform: "scale(-1 1) rotate(70)",
   loop: PITSTOP_LOOP,
   infield: PITSTOP_INFIELD,
   startFinish: {
@@ -85,8 +91,31 @@ const PITSTOP_NARVSKAYA_REVERSE = makeTrack({
   },
 });
 
+// --- Igora Drive karting circuit ------------------------------------------
+// Derived from a normalized telemetry lap (RaceChrono GPX), projected from
+// lat/lon to local metres and rotated a quarter turn so the layout lays out
+// landscape to fill the wide map panel. One closed loop; no infield spur.
+const IGORA_DRIVE_LOOP: string[] = [
+  "116.268,-23.973 96.063,-5.947 76.538,9.257 11.271,54.562 -3.312,62.835 -12.997,65.498 -23.205,65.498 -28.882,63.848 -40.137,57.74 -46.582,56.457 -53.94,57.526 -64.705,63.618 -71.128,65.52 -79.655,64.889 -88.104,60.698 -97.121,51.976 -106.862,39.002 -115.879,22.592 -120.554,9.416 -122.168,-3.131 -120.888,-14.308 -116.38,-23.293 -109.033,-29.32 -103.689,-30.701 -92.947,-29.95 -87.503,-30.865 -81.481,-34.224 -75.136,-41.039 -70.905,-43.894 -65.429,-45.477 -59.117,-44.957 -53.718,-42.672 -48.363,-38.656 -30.14,-18.11 -17.116,-5.235 -6.229,-1.953 1.23,-1.487 10.436,-3.756 18.139,-8.922 22.147,-13.881 33.001,-33.698 38.121,-39.067 44.778,-43.724 52.905,-46.573 60.831,-46.518 67.844,-43.439 73.02,-37.906 75.358,-31.32 75.135,-24.822 72.107,-16.823 67.065,-10.281 54.597,0.019 2.031,36.016 -5.46,39.056 -12.496,40.251 -19.531,39.796 -38.634,35.758 -65.506,39.111 -73.466,37.966 -81.603,34.651 -88.806,29.474 -95.785,21.968 -99.459,15.799 -101.407,7.969 -100.628,1.597 -97.455,-3.378 -91.088,-6.758 -84.331,-6.484 -78.141,-3.224 -69.124,7.432 -63.146,11.558 -54.319,13.278 -44.723,11.142 -37.242,7.065 -31.454,2.227 -7.954,-24.236 16.637,-49.532 27.279,-57.328 37.153,-61.969 58.716,-67.201 89.996,-69.968 111.036,-69.119 124.294,-65.914 129.571,-62.248 132.521,-58.106 134.168,-52.764 133.946,-47.209 132.521,-42.984 129.081,-37.675 115.934,-24.219 116.268,-23.973",
+];
+
+const IGORA_DRIVE = makeTrack({
+  id: "igora_drive",
+  label: "Igora Drive",
+  viewBox: "-130.168 -77.968 272.337 151.488",
+  transform: "",
+  loop: IGORA_DRIVE_LOOP,
+  startFinish: {
+    x1: 113.56828603456734,
+    y1: -28.181195657929763,
+    x2: 118.96771272932597,
+    y2: -19.764177696209124,
+  },
+});
+
 export const TRACKS: Record<string, TrackDef> = {
   [PITSTOP_NARVSKAYA_REVERSE.id]: PITSTOP_NARVSKAYA_REVERSE,
+  [IGORA_DRIVE.id]: IGORA_DRIVE,
 };
 
 /** All tracks, in picker order. */
