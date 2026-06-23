@@ -14,6 +14,7 @@ import {
 const MAX_INT64 = '9223372036854775807';
 const US_PER_MS = 1_000;
 const LAPS_MARKER_RE = /--\s*(\d+)\s*laps?\s*--/i;
+const SPORT_NAME_RE = /sport\s*(\d+)/i;
 
 interface KartState {
   driverName: string;
@@ -64,15 +65,23 @@ export class GrrLiveParser {
   private heatName: string | null = null;
   private heatInfo: GrrHeatInfo | null = null;
   private appInfo: GrrAppInfo = {};
+  private readonly remapSportKarts: boolean;
+
+  constructor(opts?: { remapSportKarts?: boolean }) {
+    this.remapSportKarts = opts?.remapSportKarts ?? false;
+  }
 
   reset(reason: string): void {
     if (this.heatName) {
       this.logger.log(`Resetting parser state: ${reason}`);
     }
-    this.columnIndex.clear();
-    this.columnIndexLower.clear();
-    this.rowToKart.clear();
-    this.karts.clear();
+    // Clear ONLY heat-identity state here. The results-table structure
+    // (columnIndex, columnIndexLower, rowToKart, karts) is owned by `r_i`
+    // (handleResultsInit clears + rebuilds it) and is re-sent for every new heat
+    // and on every (re)connect. The heat-name change often arrives *after* the
+    // new heat's `r_i` (via a_u/h_u/h_h), so wiping the table here destroyed the
+    // freshly-built mapping and silently stopped lap parsing until the next
+    // reconnect.
     this.heatName = null;
     this.heatInfo = null;
     this.appInfo = {};
@@ -133,11 +142,13 @@ export class GrrLiveParser {
     }
     if (method === 'h_h') {
       if (payload && typeof payload === 'object') {
-        this.heatInfo = this.heatInfo
-          ? { ...this.heatInfo, ...(payload as GrrHeatInfo) }
-          : (payload as GrrHeatInfo);
+        const info = payload as GrrHeatInfo;
+        // The official client also switches the displayed heat on h_h.n, so a
+        // heat change can be announced via a heartbeat — detect it here too.
+        if (info.n) this.maybeSwitchHeat(info.n, 'h_h');
+        this.heatInfo = this.heatInfo ? { ...this.heatInfo, ...info } : info;
       }
-      return false;
+      return true;
     }
     if (method === 'r_i') {
       this.handleResultsInit(payload as GrrResultsInit, laps);
@@ -207,14 +218,35 @@ export class GrrLiveParser {
     const bestRoundIdx = this.findColIdx('fastestRoundNumber');
     const teamIdx = this.findColIdx('team name', 'teamName', 'team');
 
+    // Pre-scan the name cells in this batch so kart identity can fold in the
+    // Sport-kart remap (a kart named "Sport N" is numbered 100+N). Names and
+    // start numbers arrive as separate cells of the same `r_i` snapshot.
+    const nameByRow = new Map<number, string>();
+    if (this.remapSportKarts && nameIdx !== undefined) {
+      for (const upd of updates) {
+        if (!Array.isArray(upd) || upd.length < 3) continue;
+        const [row, col, value] = upd;
+        if (col !== nameIdx) continue;
+        const nm = stringValue(value);
+        if (nm) nameByRow.set(row as number, nm);
+      }
+    }
+
     // Pass 1: resolve row → kart identity so further cells route correctly.
     for (const upd of updates) {
       if (!Array.isArray(upd) || upd.length < 3) continue;
       const [row, col, value] = upd;
       if (typeof row !== 'number' || row < 0) continue;
       if (col !== numIdx) continue;
-      const sn = stringValue(value);
-      if (!sn) continue;
+      const rawNum = stringValue(value);
+      if (!rawNum) continue;
+      // For Sport karts the start number is reused by the rental fleet, so key by
+      // the remapped number (100+N) to keep the two karts distinct. The name comes
+      // from this batch, or falls back to the row's already-known name.
+      const prevKey = this.rowToKart.get(row);
+      const name =
+        nameByRow.get(row) ?? (prevKey ? this.karts.get(prevKey)?.driverName : '') ?? '';
+      const sn = this.effectiveKartNumber(rawNum, name);
       this.rowToKart.set(row, sn);
       if (!this.karts.has(sn)) {
         this.karts.set(sn, blankKart());
@@ -324,6 +356,18 @@ export class GrrLiveParser {
     }
   }
 
+  // Igora: a kart named "Sport N" runs the same start number as the rental kart
+  // "Kart N", so number it 100+N to keep the fleets distinct. Off for other tracks.
+  private effectiveKartNumber(startNumber: string, name: string): string {
+    if (!this.remapSportKarts) return startNumber;
+    const m = SPORT_NAME_RE.exec(name || '');
+    if (m) {
+      const x = parseInt(m[1], 10);
+      if (Number.isFinite(x)) return String(100 + x);
+    }
+    return startNumber;
+  }
+
   private findColIdx(...names: string[]): number | undefined {
     for (const name of names) {
       const direct = this.columnIndex.get(name);
@@ -349,9 +393,25 @@ export class GrrLiveParser {
   }
 
   private buildHeatInfo(): ParsedHeatInfo | null {
-    const name = this.heatName || this.heatInfo?.n;
+    const name = this.heatName || this.heatInfo?.n || this.appInfo?.h;
     if (!name) return null;
-    const startTicks = this.heatInfo?.s;
+    // Prefer the heat-info start (`s`); fall back to the app-info green-flag time
+    // (`g`, a numeric string == h_i.s) so a switch announced via a_i/a_u/h_h can
+    // be emitted immediately instead of waiting for the next full `h_i` snapshot
+    // (which in practice only arrives on reconnect).
+    const sFromHeat =
+      typeof this.heatInfo?.s === 'number' && this.heatInfo.s > 0 ? this.heatInfo.s : 0;
+    const sFromApp = Number(this.appInfo?.g) || 0;
+    // Heartbeats (h_h) carry q (server time) and r (elapsed since start); q - r is
+    // the heat start and matches h_i.s exactly while the heat is running (r > 0).
+    // This is the ONLY start signal that arrives mid-stream — a_i/h_i snapshots
+    // only come on reconnect — so it lets us switch heats (and stop writing the
+    // new heat's laps into the previous one) without waiting for a restart.
+    const q = this.heatInfo?.q;
+    const r = this.heatInfo?.r;
+    const sFromClock =
+      typeof q === 'number' && typeof r === 'number' && r > 0 && q - r > 0 ? q - r : 0;
+    const startTicks = sFromHeat || sFromApp || sFromClock;
     if (!startTicks || startTicks <= 0) return null;
     const scheduledTimestamp = Math.floor(startTicks / 10_000_000);
     return {

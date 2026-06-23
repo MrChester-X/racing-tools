@@ -39,6 +39,8 @@ export interface GrrHeatInfo {
 
 export interface GrrAppInfo {
   h?: string;
+  /** Green-flag (heat start) time in ticks, as a numeric string (== GrrHeatInfo.s). */
+  g?: string;
   f?: string;
   s?: string;
   o?: string;

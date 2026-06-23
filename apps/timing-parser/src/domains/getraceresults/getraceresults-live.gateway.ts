@@ -26,7 +26,7 @@ export class GrrLiveGateway implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     for (const track of TRACKS) {
-      const parser = new GrrLiveParser();
+      const parser = new GrrLiveParser({ remapSportKarts: track.remapSportKarts });
       const runner = new TrackRunner(track, parser, this.timing);
       this.runners.set(track.id, runner);
       runner.start();
@@ -197,7 +197,13 @@ class TrackRunner {
   }
 
   private async applyHeat(info: ParsedHeatInfo): Promise<void> {
-    const heatChanged = info.name !== this.currentHeatName;
+    // A heat is identified by (scheduledTimestamp, name) — the DB upsert key.
+    // Comparing on name alone merged a genuinely new heat (new start time, same
+    // title) into the previous one, so detect a change on either field.
+    const heatChanged =
+      !this.currentHeat ||
+      info.scheduledTimestamp !== this.currentHeat.scheduledTimestamp ||
+      info.name !== this.currentHeatName;
     if (!heatChanged && this.currentHeat) {
       this.currentHeat = await this.timing.upsertHeat({
         kartodromId: this.config.id,
