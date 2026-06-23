@@ -105,11 +105,13 @@ const IGORA_DRIVE = makeTrack({
   viewBox: "-130.168 -77.968 272.337 151.488",
   transform: "",
   loop: IGORA_DRIVE_LOOP,
+  // Start-finish line sits at the middle of the front straight (perpendicular to
+  // travel), not at the top-right corner where the loop happens to begin.
   startFinish: {
-    x1: 113.56828603456734,
-    y1: -28.181195657929763,
-    x2: 118.96771272932597,
-    y2: -19.764177696209124,
+    x1: 30.44,
+    y1: 47.35,
+    x2: 24.74,
+    y2: 39.13,
   },
 });
 
