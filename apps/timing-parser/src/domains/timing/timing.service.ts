@@ -62,6 +62,40 @@ export class TimingService {
     }
   }
 
+  /**
+   * Like insertLap, but on conflict (same heat + driver + lapCount) it OVERWRITES
+   * the existing row's data instead of ignoring it. Used for laps derived from the
+   * GAP marker, where our value is authoritative and must win over a stale time.
+   */
+  async upsertLap(data: {
+    heat: Heat;
+    driverName: string;
+    kart: string;
+    position: number;
+    lapCount: number;
+    time: number;
+    driverExternalId: number;
+    meta: Record<string, any>;
+    passAt: Date | null;
+  }): Promise<boolean> {
+    try {
+      await this.lapRepository
+        .createQueryBuilder()
+        .insert()
+        .into(Lap)
+        .values({ ...data, heat: { id: data.heat.id } as any })
+        .orUpdate(
+          ['driverName', 'kart', 'position', 'time', 'meta'],
+          ['heatId', 'driverExternalId', 'lapCount'],
+        )
+        .execute();
+      return true;
+    } catch (err) {
+      this.logger.warn(`Failed to upsert lap: ${err.message}`);
+      return false;
+    }
+  }
+
   async insertRawMessage(kartodromId: string, data: any): Promise<void> {
     await this.rawMessageRepository.save({ kartodromId, data });
   }

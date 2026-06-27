@@ -8,4 +8,11 @@ export interface GrrTrackConfig {
    * keeps the two fleets distinct.
    */
   remapSportKarts?: boolean;
+  /**
+   * TEMPORARY: also write every lap into a parallel heat named `<name> v2`.
+   * Other devices pollute the primary heat with false laps; the v2 heat is only
+   * ever written by us, so it stays clean. Remove once the duplicate-source
+   * problem is fixed upstream.
+   */
+  mirrorToV2Heat?: boolean;
 }
