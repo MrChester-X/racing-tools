@@ -48,6 +48,21 @@ const PITSTOP_LOOP: string[] = [
 const PITSTOP_INFIELD =
   "-18.116,0.467 -18.151,-1.533 -17.811,-3.503 -17.306,-5.436 -16.665,-7.331 -15.882,-9.171 -14.958,-10.945 -13.887,-12.633 -12.668,-14.218 -11.309,-15.684 -9.822,-17.021 -8.226,-18.226 -6.542,-19.304 -4.788,-20.264 -2.977,-21.113 -1.121,-21.855 0.774,-22.494 2.701,-23.029 4.654,-23.459 6.626,-23.789 8.612,-24.023 10.607,-24.165 12.606,-24.216 14.605,-24.173 16.599,-24.027 18.581,-23.761 20.538,-23.356 22.456,-22.793 24.314,-22.057 26.088,-21.138 27.754,-20.036 29.287,-18.755 30.665,-17.31 31.87,-15.717 32.891,-14 33.723,-12.184 34.367,-10.293 34.81,-8.346 35.026,-6.361 35,-4.365 34.732,-2.386 34.24,-0.45 33.594,1.442 32.877,3.309 32.139,5.167 31.406,7.028 30.699,8.899 30.012,10.778 29.33,12.658 28.647,14.537 27.965,16.417 27.282,18.297 26.6,20.177 25.917,22.057 25.235,23.937 24.552,25.817 23.87,27.697 23.187,29.577 22.504,31.457 21.813,33.333 21.091,35.199 20.307,37.038 19.42,38.83 18.386,40.542 17.181,42.137 15.811,43.593 14.308,44.912 12.712,46.117 11.064,47.251 9.4,48.361 7.751,49.493 6.148,50.688 4.604,51.959 3.137,53.317 1.768,54.774 0.71,56.149";
 
+/** Reverse a closed loop's travel direction: flip the segment order and the
+ * points within each so the concatenated centerline runs the other way. Drawing
+ * is unaffected — polylines render identically in either direction — so a track
+ * built from a reversed loop looks the same but karts move the opposite way. */
+function reverseLoop(loop: string[]): string[] {
+  return [...loop]
+    .reverse()
+    .map((seg) =>
+      parsePoints(seg)
+        .reverse()
+        .map(([x, y]) => `${x},${y}`)
+        .join(" "),
+    );
+}
+
 function makeTrack(opts: {
   id: string;
   label: string;
@@ -91,6 +106,26 @@ const PITSTOP_NARVSKAYA_REVERSE = makeTrack({
   },
 });
 
+// Same physical track as the reverse layout, driven the other way: identical
+// shape/transform and the same start-finish line, only the centerline runs in
+// the opposite direction so karts travel the standard way round.
+const PITSTOP_NARVSKAYA_STANDARD = makeTrack({
+  id: "pitstop_narvskaya_standard",
+  label: "PitStop Narvskaya (standart)",
+  viewBox: "-81.439 -92.058 192.076 211.593",
+  transform:
+    "rotate(-70 14.599 13.7385) translate(14.599 13.7385) scale(-1 1) translate(-14.599 -13.7385)",
+  labelTransform: "scale(-1 1) rotate(70)",
+  loop: reverseLoop(PITSTOP_LOOP),
+  infield: PITSTOP_INFIELD,
+  startFinish: {
+    x1: -5.638314717017173,
+    y1: 58.943714935195835,
+    x2: 3.744075732180634,
+    y2: 62.403592022434886,
+  },
+});
+
 // --- Igora Drive karting circuit ------------------------------------------
 // Derived from a normalized telemetry lap (RaceChrono GPX), projected from
 // lat/lon to local metres and rotated a quarter turn so the layout lays out
@@ -116,6 +151,7 @@ const IGORA_DRIVE = makeTrack({
 });
 
 export const TRACKS: Record<string, TrackDef> = {
+  [PITSTOP_NARVSKAYA_STANDARD.id]: PITSTOP_NARVSKAYA_STANDARD,
   [PITSTOP_NARVSKAYA_REVERSE.id]: PITSTOP_NARVSKAYA_REVERSE,
   [IGORA_DRIVE.id]: IGORA_DRIVE,
 };
