@@ -4,8 +4,15 @@ export interface RacemannLiveConfig {
   homeLastPollMs: number;
 }
 
-export const racemannLiveConfig: RacemannLiveConfig = {
-  subdomain: 'pitstop',
-  kartodromId: 'racemann-pitstop',
-  homeLastPollMs: 10_000,
-};
+export const racemannLiveConfigs: RacemannLiveConfig[] = [
+  {
+    subdomain: 'pitstop',
+    kartodromId: 'racemann-pitstop',
+    homeLastPollMs: 10_000,
+  },
+  {
+    subdomain: 'miks',
+    kartodromId: 'racemann-miks',
+    homeLastPollMs: 10_000,
+  },
+];

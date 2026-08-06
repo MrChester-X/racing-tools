@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import {
   RacemannComp,
   RacemannLastLap,
@@ -6,7 +6,7 @@ import {
 } from '../racemann.types';
 import { NewLap } from './racemann-live.types';
 
-@Injectable()
+/** Per-race lap state; each live worker owns its own instance. */
 export class RacemannLiveParser {
   private readonly logger = new Logger(RacemannLiveParser.name);
   private lastLapByRn = new Map<string, number>();
