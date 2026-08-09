@@ -15,4 +15,9 @@ export const racemannLiveConfigs: RacemannLiveConfig[] = [
     kartodromId: 'racemann-miks',
     homeLastPollMs: 10_000,
   },
+  {
+    subdomain: 'miksevents',
+    kartodromId: 'racemann-miksevents',
+    homeLastPollMs: 10_000,
+  },
 ];
