@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRaceStore } from "../store/useRaceStore";
 import { useRoomStore } from "../rooms/useRoomStore";
+import { useRoomMembers } from "../rooms/members";
+import { MemberChips, MembersPill } from "../rooms/RoomMembers";
 import { usePitlaneDisplayStore } from "../store/usePitlaneDisplayStore";
 import { useFavoriteTeamsStore } from "../store/useFavoriteTeamsStore";
 import { useLinkedHeatStore } from "../linked-heat/useLinkedHeatStore";
@@ -48,6 +50,8 @@ export default function MobileMode() {
   const order = usePitlaneDisplayStore((s) => s.order);
   const hydratePitlaneDisplay = usePitlaneDisplayStore((s) => s.hydrate);
   const hydrateFavorites = useFavoriteTeamsStore((s) => s.hydrate);
+  const members = useRoomMembers();
+  const [membersOpen, setMembersOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [showTrackMap, setShowTrackMap] = useState(false);
   const [trackId, setTrackId] = useState<string>(TRACK_LIST[0]?.id ?? "");
@@ -323,29 +327,41 @@ export default function MobileMode() {
         </button>
       </div>
 
-      {/* Room control strip — who's editing + take control */}
+      {/* Room control strip — who's editing + who's in the room + take control */}
       {currentRoomId && currentRoom && (
         <div
-          className="flex-shrink-0 flex items-center gap-2 px-3 h-8 bg-orange-950/40 border-b border-orange-500/20 text-xs"
+          className="flex-shrink-0 bg-orange-950/40 border-b border-orange-500/20 text-xs"
           onClick={(e) => e.stopPropagation()}
         >
-          {isOwner ? (
-            <span className="text-green-300 font-bold truncate">✏ Вы управляете{nickname ? ` · ${nickname}` : ""}</span>
-          ) : (
-            <span className="text-gray-300 truncate">
-              👁 Управляет: <span className="text-orange-200 font-bold">{ownerLabel}</span>
-            </span>
-          )}
-          {saveStatus === "retrying" && <span className="text-yellow-400 flex-shrink-0">· Сохр…</span>}
-          {saveStatus === "offline" && <span className="text-red-400 flex-shrink-0">· Оффлайн</span>}
-          <div className="flex-1" />
-          {!isOwner && (
-            <button
-              onClick={() => takeControl()}
-              className="px-2 py-0.5 rounded bg-orange-600 hover:bg-orange-500 text-white text-[11px] font-bold flex-shrink-0"
-            >
-              Взять управление
-            </button>
+          <div className="flex items-center gap-2 px-3 h-8">
+            {isOwner ? (
+              <span className="text-green-300 font-bold truncate">✏ Вы управляете{nickname ? ` · ${nickname}` : ""}</span>
+            ) : (
+              <span className="text-gray-300 truncate">
+                👁 Управляет: <span className="text-orange-200 font-bold">{ownerLabel}</span>
+              </span>
+            )}
+            {saveStatus === "retrying" && <span className="text-yellow-400 flex-shrink-0">· Сохр…</span>}
+            {saveStatus === "offline" && <span className="text-red-400 flex-shrink-0">· Оффлайн</span>}
+            <div className="flex-1" />
+            <MembersPill
+              members={members}
+              open={membersOpen}
+              onToggle={() => setMembersOpen((v) => !v)}
+            />
+            {!isOwner && (
+              <button
+                onClick={() => takeControl()}
+                className="px-2 py-0.5 rounded bg-orange-600 hover:bg-orange-500 text-white text-[11px] font-bold flex-shrink-0"
+              >
+                Взять управление
+              </button>
+            )}
+          </div>
+          {membersOpen && (
+            <div className="px-3 pb-1">
+              <MemberChips members={members} />
+            </div>
           )}
         </div>
       )}

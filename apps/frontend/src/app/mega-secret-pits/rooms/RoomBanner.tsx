@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { useRoomStore } from './useRoomStore';
 import { NicknameModal } from './NicknameModal';
+import { useRoomMembers } from './members';
+import { MemberChips } from './RoomMembers';
 
 export function RoomBanner() {
   const {
@@ -15,6 +17,7 @@ export function RoomBanner() {
     setNickname,
   } = useRoomStore();
   const [nickModalOpen, setNickModalOpen] = useState(false);
+  const members = useRoomMembers();
 
   if (!currentRoomId || !currentRoom) return null;
 
@@ -50,6 +53,7 @@ export function RoomBanner() {
           {saveStatus === 'offline' && (
             <span className="text-red-400">· Offline — changes not synced</span>
           )}
+          <MemberChips members={members} className="min-w-0" />
           <div className="flex-1" />
           {!isOwner && (
             <button

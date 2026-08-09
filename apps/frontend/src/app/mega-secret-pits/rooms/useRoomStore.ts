@@ -1,10 +1,10 @@
 'use client';
 import { create } from 'zustand';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import type { RealtimeChannel, RealtimePresenceState } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useRaceStore } from '../store/useRaceStore';
 import { RaceData } from '../types';
-import { PitRoom } from './types';
+import { PitRoom, RoomPresenceEntry, RoomPresencePayload } from './types';
 import * as api from './roomsClient';
 
 const SESSION_KEY = 'pitSessionId';
@@ -37,6 +37,10 @@ interface RoomStoreState {
   rooms: PitRoom[];
   isLoading: boolean;
   channel: RealtimeChannel | null;
+  /** Everyone connected to the current room right now, one entry per session. */
+  presence: RoomPresenceEntry[];
+  /** Our own join time, kept stable so re-tracking doesn't reshuffle the list. */
+  presenceJoinedAt: number;
   lastSavedAt: number;
   takeoverToast: string | null;
   saveStatus: 'ok' | 'retrying' | 'offline';
@@ -60,6 +64,8 @@ export const useRoomStore = create<RoomStoreState>((set, get) => ({
   rooms: [],
   isLoading: false,
   channel: null,
+  presence: [],
+  presenceJoinedAt: 0,
   lastSavedAt: 0,
   takeoverToast: null,
   saveStatus: 'ok',
@@ -81,6 +87,11 @@ export const useRoomStore = create<RoomStoreState>((set, get) => ({
   setNickname: (name: string) => {
     localStorage.setItem(NICKNAME_KEY, name);
     set({ nickname: name });
+    // Re-announce so the others see the new name without rejoining.
+    const { channel, currentRoomId, sessionId, presenceJoinedAt } = get();
+    if (channel && currentRoomId) {
+      void channel.track({ sessionId, nickname: name, joinedAt: presenceJoinedAt });
+    }
   },
 
   refreshRooms: async () => {
@@ -116,21 +127,30 @@ export const useRoomStore = create<RoomStoreState>((set, get) => ({
     const { channel: prev } = get();
     if (prev) await supabase.removeChannel(prev);
 
+    const sessionId = get().sessionId;
+    const joinedAt = Date.now();
+
     const channel = supabase
-      .channel(`pit_rooms:${id}:${Date.now()}`)
+      .channel(`pit_rooms:${id}:${Date.now()}`, {
+        config: { presence: { key: sessionId } },
+      })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pit_rooms', filter: `id=eq.${id}` },
         (payload) => handleRealtime(payload.new as PitRoom, get, set),
       )
+      .on('presence', { event: 'sync' }, () => {
+        set({ presence: collectPresence(channel.presenceState<RoomPresencePayload>()) });
+      })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           const fresh = await api.loadRoom(id);
           if (fresh) handleRealtime(fresh, get, set);
+          await channel.track({ sessionId, nickname: get().nickname, joinedAt });
         }
       });
 
-    set({ currentRoomId: id, currentRoom: room, channel });
+    set({ currentRoomId: id, currentRoom: room, channel, presence: [], presenceJoinedAt: joinedAt });
     if (typeof window !== 'undefined') {
       localStorage.setItem(CURRENT_ROOM_KEY, id);
     }
@@ -142,7 +162,14 @@ export const useRoomStore = create<RoomStoreState>((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.removeItem(CURRENT_ROOM_KEY);
     }
-    set({ currentRoomId: null, currentRoom: null, channel: null, saveStatus: 'ok' });
+    set({
+      currentRoomId: null,
+      currentRoom: null,
+      channel: null,
+      presence: [],
+      presenceJoinedAt: 0,
+      saveStatus: 'ok',
+    });
     useRaceStore.getState().loadInitialData();
   },
 
@@ -176,6 +203,26 @@ export const useRoomStore = create<RoomStoreState>((set, get) => ({
 
   dismissToast: () => set({ takeoverToast: null }),
 }));
+
+/**
+ * Presence is keyed by sessionId, so one person with several tabs open shows up
+ * once — we keep their earliest join so the list order stays put.
+ */
+function collectPresence(
+  state: RealtimePresenceState<RoomPresencePayload>,
+): RoomPresenceEntry[] {
+  const out: RoomPresenceEntry[] = [];
+  for (const [key, entries] of Object.entries(state)) {
+    if (!entries.length) continue;
+    const earliest = entries.reduce((a, b) => ((b.joinedAt ?? 0) < (a.joinedAt ?? 0) ? b : a));
+    out.push({
+      sessionId: earliest.sessionId || key,
+      nickname: earliest.nickname ?? '',
+      joinedAt: earliest.joinedAt ?? 0,
+    });
+  }
+  return out;
+}
 
 function handleRealtime(
   next: PitRoom,
