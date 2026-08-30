@@ -33,6 +33,18 @@ const COLORS = {
   text: [17, 24, 39] as [number, number, number],
 };
 
+// Геометрия колонки TEAM / DRIVER в таблице карта (мм / pt).
+const TEAM_COL_WIDTH = 56;
+const CELL_PADDING = 2.2;
+const TEAM_FONT_SIZE = 8.5;
+const DRIVER_FONT_SIZE = 7.5;
+
+// Фон строки body-таблицы: autoTable красит alternateRowStyles при чётном
+// индексе, и перерисовка ячеек поверх должна попадать в тот же цвет.
+function rowBackground(rowIndex: number): [number, number, number] {
+  return rowIndex % 2 === 0 ? COLORS.rowAlt : [255, 255, 255];
+}
+
 function deltaColor(deltaMs: number): [number, number, number] {
   if (deltaMs < 300) return COLORS.deltaHot;
   if (deltaMs < 800) return COLORS.deltaGood;
@@ -460,6 +472,13 @@ export async function generatePdf(input: PdfExportInput, filename: string): Prom
       avgDelta: number | null;
       bestIsAbsolute: boolean;
       avgIsAbsolute: boolean;
+      // Название команды из ячейки TEAM / DRIVER до переноса — по нему при
+      // отрисовке считаем, сколько верхних строк ячейки занимает команда,
+      // а сколько остаётся пилотам. null = у стинта нет имени пилота.
+      teamText: string | null;
+      // Готовые (уже перенесённые) строки той же ячейки, перехваченные у
+      // autoTable в willDrawCell, чтобы он не печатал их своим единым стилем.
+      teamCellLines: string[] | null;
     };
     const metadataPerRow: CellBundle[] = [];
 
@@ -496,7 +515,15 @@ export async function generatePdf(input: PdfExportInput, filename: string): Prom
 
       const teamCell = period.teamName + (isOk && stats.driver ? `\n${stats.driver}` : "");
 
-      metadataPerRow.push({ content: "", bestDelta, avgDelta, bestIsAbsolute, avgIsAbsolute });
+      metadataPerRow.push({
+        content: "",
+        bestDelta,
+        avgDelta,
+        bestIsAbsolute,
+        avgIsAbsolute,
+        teamText: null,
+        teamCellLines: null,
+      });
 
       return [
         { content: String(idx + 1), styles: { halign: "center", textColor: COLORS.muted } },
@@ -517,8 +544,8 @@ export async function generatePdf(input: PdfExportInput, filename: string): Prom
       theme: "plain",
       styles: {
         font: "Roboto",
-        fontSize: 8.5,
-        cellPadding: 2.2,
+        fontSize: TEAM_FONT_SIZE,
+        cellPadding: CELL_PADDING,
         overflow: "linebreak",
         lineColor: COLORS.line,
         lineWidth: 0.1,
@@ -536,7 +563,7 @@ export async function generatePdf(input: PdfExportInput, filename: string): Prom
       rowPageBreak: "avoid",
       columnStyles: {
         0: { cellWidth: 8 },
-        1: { cellWidth: 56 },
+        1: { cellWidth: TEAM_COL_WIDTH },
         2: { cellWidth: 18, halign: "center" },
         3: { cellWidth: 13, halign: "center" },
         4: { cellWidth: 13, halign: "center" },
@@ -549,20 +576,54 @@ export async function generatePdf(input: PdfExportInput, filename: string): Prom
         const meta = metadataPerRow[rowIndex];
         if (!meta) return;
 
-        // Имя пилота (вторая строка в Team): мельче и серым
-        if (hookData.column.index === 1) {
-          const raw = String(hookData.cell.raw ?? "");
-          if (raw.includes("\n")) {
-            hookData.cell.styles.fontSize = 7.5;
-            hookData.cell.styles.textColor = COLORS.muted;
-          }
+        // Ячейка TEAM / DRIVER двухъярусная: `${team}\n${drivers}`. Здесь текст
+        // ещё разбит только по переводам строк (перенос по ширине autoTable
+        // сделает позже), поэтому первый элемент — это ровно имя команды.
+        if (hookData.column.index === 1 && hookData.cell.text.length > 1) {
+          meta.teamText = hookData.cell.text[0];
         }
+      },
+      willDrawCell: (hookData) => {
+        if (hookData.section !== "body") return;
+        const meta = metadataPerRow[hookData.row.index];
+        if (!meta || hookData.column.index !== 1 || meta.teamText === null) return;
+        if (hookData.cell.text.length === 0) return; // текст уже забрали
+        // Забираем текст у autoTable: фон и рамки он нарисует сам, а строки
+        // напечатаем в didDrawCell двумя ярусами. Высота ячейки посчитана
+        // раньше, так что опустошение текста её уже не меняет.
+        meta.teamCellLines = hookData.cell.text;
+        hookData.cell.text = [];
       },
       didDrawCell: (hookData) => {
         if (hookData.section !== "body") return;
         const rowIndex = hookData.row.index;
         const meta = metadataPerRow[rowIndex];
         if (!meta) return;
+
+        // Ячейка TEAM / DRIVER — перерисовываем поверх autoTable, чтобы название
+        // команды осталось обычным, а строки пилотов ушли в мелкий серый.
+        // autoTable красит ячейку одним стилем, отсюда ручная отрисовка.
+        if (hookData.column.index === 1 && meta.teamText !== null && meta.teamCellLines) {
+          const cell = hookData.cell;
+          // Переносим имя команды ровно так же, как autoTable перенёс всю
+          // ячейку (см. fitContent), — тогда счётчик строк команды сходится
+          // с началом строк пилотов.
+          const wrapWidth = cell.width - cell.padding("horizontal") + 1 / doc.internal.scaleFactor;
+          const teamLineCount: number = doc.splitTextToSize(meta.teamText, wrapWidth, {
+            fontSize: cell.styles.fontSize,
+          }).length;
+
+          const textPos = cell.getTextPos();
+          const lineHeight = (cell.styles.fontSize / doc.internal.scaleFactor) * doc.getLineHeightFactor();
+          doc.setFont("Roboto", "normal");
+          meta.teamCellLines.forEach((line, lineIndex) => {
+            const isTeam = lineIndex < teamLineCount;
+            doc.setFontSize(isTeam ? TEAM_FONT_SIZE : DRIVER_FONT_SIZE);
+            doc.setTextColor(...(isTeam ? COLORS.text : COLORS.muted));
+            doc.text(line, textPos.x, textPos.y + lineIndex * lineHeight, { baseline: "top" });
+          });
+          return;
+        }
 
         // Подсветка абсолютных бестов — небольшая цветная полоска слева от ячейки
         const cellX = hookData.cell.x;
@@ -591,8 +652,7 @@ export async function generatePdf(input: PdfExportInput, filename: string): Prom
           if (!raw.includes("+") || delta === null) return;
 
           // Перерисуем поверх: сначала затираем фоном ячейки (alt или white)
-          const bgColor = rowIndex % 2 === 1 ? COLORS.rowAlt : [255, 255, 255] as [number, number, number];
-          doc.setFillColor(...bgColor);
+          doc.setFillColor(...rowBackground(rowIndex));
           // Сдвиг от левой полоски подсветки, если есть
           const padLeft = isAbsolute ? 2.4 : 2.2;
           doc.rect(cellX + padLeft - 0.2, cellY + 0.5, hookData.cell.width - padLeft, cellH - 1, "F");

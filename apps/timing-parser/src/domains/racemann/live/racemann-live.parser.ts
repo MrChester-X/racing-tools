@@ -66,6 +66,12 @@ export class RacemannLiveParser {
         lapState: ll.ls,
         posDiff: ll.pd,
         sectors: { S1: ll.S1, S2: ll.S2, S3: ll.S3 },
+        // Seed laps carry no session of their own, but the comp snapshot they
+        // came with already names the driver on track — without this the
+        // opening laps of every stint 1 land in the DB with no pilot.
+        sessionNum: comp.cs?.n,
+        sessionDriver: comp.cs?.drv ?? null,
+        sessionCar: comp.cs?.Car ?? null,
       }),
     };
   }

@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
-import { KartStint, ParsedRaceEvent, ParsedRaceTeam, RaceData, RaceSettings } from "../types";
+import { ParsedRaceEvent, ParsedRaceTeam, RaceData } from "../types";
 import { LapItem } from "@/app/heats/types";
-import { buildLapFilterContext, computeExcludedLapCounts } from "../lapFilters";
+import { computeStintStats, formatLapTime, StintStats } from "../pdf/reportData";
 
 interface PdfReportProps {
   teams: Record<string, ParsedRaceTeam>;
@@ -12,67 +12,6 @@ interface PdfReportProps {
   pitlane: string[][];
   linkedHeat: { id: string; name: string } | null;
   linkedLapsByKart: Record<string, LapItem[]> | null;
-}
-
-type StintStats =
-  | { kind: "ok"; count: number; avg: number | null; avgCount: number; best: number; driver: string | null }
-  | { kind: "missing-lap-numbers" }
-  | { kind: "no-data" };
-
-function formatLapTime(ms: number): string {
-  const totalSec = ms / 1000;
-  const min = Math.floor(totalSec / 60);
-  const sec = (totalSec % 60).toFixed(3);
-  return min > 0 ? `${min}:${sec.padStart(6, "0")}` : sec;
-}
-
-function computeStintStats(
-  startKart: string,
-  stint: KartStint,
-  events: ParsedRaceEvent[],
-  linkedLapsForTeam: LapItem[] | undefined,
-  settings: RaceSettings | undefined,
-): StintStats {
-  if (!linkedLapsForTeam || linkedLapsForTeam.length === 0) return { kind: "no-data" };
-  if (stint.startLap === null || stint.unbounded) return { kind: "missing-lap-numbers" };
-
-  const startLap = stint.startLap;
-  const endLap = stint.endLap ?? Infinity;
-  const teamPits = events.filter(
-    (e) => e.type === "pit" && e.team?.startKart === startKart,
-  );
-
-  const ctx = buildLapFilterContext(settings);
-  const excluded = computeExcludedLapCounts(linkedLapsForTeam, teamPits, ctx);
-  const laps = linkedLapsForTeam.filter(
-    (l) => l.lapCount >= startLap && l.lapCount <= endLap && !excluded.has(l.lapCount),
-  );
-  if (laps.length === 0) return { kind: "no-data" };
-
-  const maxLapTimeForAverageSec = settings?.maxLapTimeForAverageSec;
-  const maxMs =
-    typeof maxLapTimeForAverageSec === "number" && maxLapTimeForAverageSec > 0
-      ? maxLapTimeForAverageSec * 1000
-      : Infinity;
-
-  let sum = 0;
-  let avgCount = 0;
-  let best = Infinity;
-  for (const l of laps) {
-    if (l.time < best) best = l.time;
-    if (l.time <= maxMs) {
-      sum += l.time;
-      avgCount++;
-    }
-  }
-  const avg = avgCount > 0 ? sum / avgCount : null;
-
-  // Имя пилота — берём из первого (самого раннего) круга стинта.
-  const firstLap = laps.reduce((acc, l) => (l.lapCount < acc.lapCount ? l : acc), laps[0]);
-  const rawDriver = (firstLap.meta as { stint?: { driver?: string } } | undefined)?.stint?.driver;
-  const driver = typeof rawDriver === "string" && rawDriver.trim() ? rawDriver.trim() : null;
-
-  return { kind: "ok", count: laps.length, avg, avgCount, best, driver };
 }
 
 export const PdfReport: React.FC<PdfReportProps> = ({

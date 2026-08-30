@@ -26,6 +26,49 @@ export interface ReportInput {
   linkedLapsByKart: Record<string, LapItem[]> | null;
 }
 
+// Имя пилота на круге. Импорт заезда по URL кладёт его в meta.stint.driver,
+// live-воркер — в meta.session.driver; читаем оба, чтобы старые заезды в БД
+// заработали без бэкфилла. Строка приходит от racemann склеенной с номером
+// пилота ("41Малышев Владимир") и печатается как есть.
+export function lapDriver(lap: LapItem): string | null {
+  const meta = lap.meta as
+    | { stint?: { driver?: string | null }; session?: { driver?: string | null } }
+    | undefined;
+  const raw = meta?.stint?.driver ?? meta?.session?.driver;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+// Пилот отрезка: один отрезок — один пилот, поэтому берём того, у кого в нём
+// больше всего кругов.
+//
+// Просто «имя с первого круга» не годится: пит-события mega-secret-pits и
+// стинты racemann разъезжаются на круг. В пит-событии записан круг, на котором
+// команда заезжала в питы, а racemann относит этот круг уже к следующему
+// стинту, так что последний круг отрезка несёт имя СЛЕДУЮЩЕГО пилота (на
+// разобранной гонке так у 135 отрезков из 450). Большинство кругов гасит и
+// этот пограничный круг, и запоздание оператора на пару кругов.
+//
+// Круги без имени (seed-круги live-воркера) не считаются — поэтому первый
+// стинт старых заездов получает имя со следующего круга.
+export function stintDriver(laps: LapItem[]): string | null {
+  const lapsByDriver = new Map<string, number>();
+  for (const lap of [...laps].sort((a, b) => a.lapCount - b.lapCount)) {
+    const name = lapDriver(lap);
+    if (name) lapsByDriver.set(name, (lapsByDriver.get(name) ?? 0) + 1);
+  }
+  let leader: string | null = null;
+  let leaderLaps = 0;
+  // Map хранит порядок вставки, поэтому при равенстве побеждает тот, чьи круги
+  // в отрезке начались раньше.
+  for (const [name, count] of lapsByDriver) {
+    if (count > leaderLaps) {
+      leader = name;
+      leaderLaps = count;
+    }
+  }
+  return leader;
+}
+
 export function formatLapTime(ms: number): string {
   const totalSec = ms / 1000;
   const min = Math.floor(totalSec / 60);
@@ -70,9 +113,11 @@ export function computeStintStats(
     }
   }
   const avg = avgCount > 0 ? sum / avgCount : null;
-  const firstLap = laps.reduce((acc, l) => (l.lapCount < acc.lapCount ? l : acc), laps[0]);
-  const rawDriver = (firstLap.meta as { stint?: { driver?: string } } | undefined)?.stint?.driver;
-  const driver = typeof rawDriver === "string" && rawDriver.trim() ? rawDriver.trim() : null;
+  // Пилота ищем по ВСЕМ кругам отрезка, а не по отфильтрованным: круг может
+  // выпасть из статистики (пит, слишком долгий), но имя пилота на нём валидно.
+  const driver = stintDriver(
+    linkedLapsForTeam.filter((l) => l.lapCount >= startLap && l.lapCount <= endLap),
+  );
   return { kind: "ok", count: laps.length, avg, avgCount, best, driver };
 }
 
